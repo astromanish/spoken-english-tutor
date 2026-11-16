@@ -23,7 +23,7 @@ Bulbul v3 (text-to-speech). No other model provider is involved.
 ## Run it
 
 ```bash
-git clone <this repo>
+git clone https://github.com/astromanish/spoken-english-tutor.git
 cd spoken-english-tutor
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
