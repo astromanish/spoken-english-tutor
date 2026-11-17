@@ -155,12 +155,14 @@ agreement (2, 6), "am + verb" (3), past tense (4, 8), a learner stuck in
 Hinglish (5), a nervous learner who needs a sentence to say (7), and a clean
 sentence where nothing should be corrected (9).
 
-The score moves a point or two between runs — tutor and judge both sample — so
-the table is the last run, not a cherry-picked one. Two failure modes surfaced
-while testing: Saaras rejecting a TTS file it could not read (HTTP 400; fixed by
-re-encoding every reply to 16 kHz mono before transcribing) and the tutor
-occasionally leaving the corrected sentence inside the Hinglish line instead of
-putting it on its own `EN:` line.
+Ten runs were made while building this: **4/9 to 8/9, mean 6.7/9** (tutor and
+judge both sample, so no two runs match). The low runs were all API-side —
+Saaras rejecting a TTS file it could not read (HTTP 400) or rate-limiting a
+burst (429). Since every reply is re-encoded to 16 kHz mono before transcribing
+and400/429 retry with backoff, no run has had a failed call: the last two were
+8/9 and 7/9. The remaining misses are wording slips — the corrected sentence
+left inside the Hinglish line instead of on its own `EN:` line, or a correction
+invented on a sentence that had none.
 
 ## Layout
 158|
