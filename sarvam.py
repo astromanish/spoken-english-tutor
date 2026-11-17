@@ -12,7 +12,9 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import wave
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -119,6 +121,36 @@ def concat_wavs(wavs: list[bytes]) -> bytes:
         return f.read()
 
 
+def _post(url: str, *, attempts: int = 4, backoff=(2.0, 5.0, 10.0),
+          retry_on=(429,), **kwargs) -> requests.Response:
+    """POST with backoff on 429/5xx — Sarvam rate-limits bursts of STT calls.
+
+    `retry_on` adds statuses worth retrying: Saaras answers 400 when it cannot
+    read the audio file (its body says so) and 429 when you burst it, and both
+    clear once the payload is fixed or the window passes.
+    """
+    last: Exception | None = None
+    body = ""
+    for i in range(attempts):
+        try:
+            r = requests.post(url, **kwargs)
+            if r is None:  # requests never returns None; keeps the type checker quiet
+                raise RuntimeError("requests returned no response")
+        except requests.RequestException as e:
+            last = e
+        else:
+            if r.status_code in retry_on or r.status_code >= 500:
+                last = RuntimeError(f"HTTP {r.status_code}")
+                body = (r.text or "")[:300]     # Sarvam says why in the body
+            else:
+                r.raise_for_status()
+                return r
+        if i < attempts - 1:
+            time.sleep(backoff[min(i, len(backoff) - 1)])
+    raise RuntimeError(
+        f"Sarvam gave up after {attempts} attempts: {last} :: {body}") from last
+
+
 # ── STT: Sarvam Saaras v3 ─────────────────────────────────────────────────
 
 def transcribe(audio_path: str) -> str:
@@ -127,14 +159,15 @@ def transcribe(audio_path: str) -> str:
     texts = []
     for chunk in _wav_chunks(wav):
         with open(chunk, "rb") as f:
-            r = requests.post(
+            r = _post(
                 BASE + "/speech-to-text",
                 headers=_speech_headers(),
                 files={"file": ("speech.wav", f, "audio/wav")},
                 data={"model": STT_MODEL, "mode": STT_MODE},
                 timeout=60,
+                attempts=7, backoff=(2.0, 4.0, 8.0, 15.0, 30.0, 45.0),
+                retry_on=(400, 429),
             )
-        r.raise_for_status()
         texts.append((r.json().get("transcript") or "").strip())
     return " ".join(t for t in texts if t).strip()
 
@@ -145,15 +178,15 @@ def chat(messages: list[dict], temperature: float = 0.4, max_tokens: int = 700) 
     """Chat completion. The -conversations variant puts the answer in `content`
     (the base sarvam-105b is a reasoning model that hides it in
     `reasoning_content`)."""
-    r = requests.post(
+    r = _post(
         BASE + "/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key()}",
                  "Content-Type": "application/json"},
         json={"model": CHAT_MODEL, "messages": messages,
               "temperature": temperature, "max_tokens": max_tokens},
         timeout=120,
+        attempts=3, backoff=(2.0, 5.0),
     )
-    r.raise_for_status()
     msg = r.json()["choices"][0]["message"]
     return (msg.get("content") or "").strip()
 
@@ -161,18 +194,29 @@ def chat(messages: list[dict], temperature: float = 0.4, max_tokens: int = 700) 
 # ── TTS: Sarvam Bulbul v3 ─────────────────────────────────────────────────
 
 def _speak_once(text: str, language_code: str) -> bytes:
-    r = requests.post(
-        BASE + "/text-to-speech",
-        headers=_speech_headers(),
-        json={"text": text, "language_code": language_code,
-              "speaker": TTS_SPEAKER, "model": TTS_MODEL},
-        timeout=120,
-    )
-    r.raise_for_status()
-    audios = r.json().get("audios") or []
-    if not audios:
+    """One synthesis call, retried once — a hung request would stall the reply."""
+    body = {"text": text, "language_code": language_code,
+            "speaker": TTS_SPEAKER, "model": TTS_MODEL}
+    audio = b""
+    for attempt in (1, 2):
+        try:
+            r = requests.post(BASE + "/text-to-speech", headers=_speech_headers(),
+                              json=body, timeout=60)
+            if r.status_code >= 500 or r.status_code == 429:
+                raise RuntimeError(f"Sarvam TTS HTTP {r.status_code}")
+            r.raise_for_status()
+            audios = r.json().get("audios") or []
+            if not audios:
+                raise RuntimeError("Sarvam TTS returned no audio")
+            audio = base64.b64decode(audios[0])
+            break
+        except (requests.RequestException, RuntimeError) as e:
+            if attempt == 2:
+                raise RuntimeError(f"Sarvam TTS failed twice: {e}") from e
+            time.sleep(0.5)
+    if not audio:
         raise RuntimeError("Sarvam TTS returned no audio")
-    return base64.b64decode(audios[0])
+    return audio
 
 
 def _split_for_tts(text: str) -> list[str]:
@@ -192,25 +236,87 @@ def _split_for_tts(text: str) -> list[str]:
     return parts
 
 
+def normalize_wav(path: str) -> str:
+    """Re-encode to 16 kHz mono PCM16 — the format Saaras always accepts.
+
+    Bulbul does not return the same format on every call (22.05 kHz today,
+    something else tomorrow), and Saaras answers HTTP 400 "Failed to read the
+    file" for the ones it does not recognise. ffmpeg makes it deterministic.
+    """
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        return path
+    dst = path + ".16k.wav"
+    try:
+        subprocess.run([ff, "-y", "-i", path, "-ac", "1", "-ar", "16000",
+                        "-c:a", "pcm_s16le", dst],
+                       check=True, capture_output=True, timeout=60)
+    except (subprocess.SubprocessError, OSError):
+        return path
+    if os.path.getsize(dst) < 4000:     # conversion produced nothing useful
+        return path
+    os.replace(dst, path)
+    return path
+
+
 def speak(text: str, language_code: str = "en-IN") -> str:
-    """Text → speech. Returns the path of a WAV file ready to play."""
-    chunks = []
-    for part in _split_for_tts(text):
-        chunks.append(_speak_once(part, language_code))
-    data = concat_wavs(chunks)
+    """Text → speech. Returns the path of a WAV file ready to play.
+
+    Sarvam occasionally answers a rate-limited request with blank audio. That
+    file would be rejected by STT with HTTP 400 for ever, so it is rebuilt
+    instead of being handed on.
+    """
+    for attempt in range(3):
+        chunks = [_speak_once(part, language_code)
+                  for part in _split_for_tts(text)]
+        data = concat_wavs(chunks)
+        if len(data) >= 4000:          # ~0.1s of 16-bit audio — blank otherwise
+            break
+        time.sleep(1.0 + attempt)
+    else:
+        raise RuntimeError("Sarvam TTS returned blank audio three times in a row")
     out = tempfile.mktemp(suffix=".wav", prefix="tutor_out_")
     with open(out, "wb") as f:
         f.write(data)
-    return out
+    return normalize_wav(out)
+
+
+def _merge_segments(segments: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Join neighbouring segments that share a language — one TTS call each."""
+    merged: list[tuple[str, str]] = []
+    for lang, text in segments:
+        text = (text or "").strip()
+        if not text:
+            continue
+        if merged and merged[-1][0] == lang:
+            merged[-1] = (lang, f"{merged[-1][1]} {text}")
+        else:
+            merged.append((lang, text))
+    return merged
 
 
 def speak_mixed(segments: list[tuple[str, str]]) -> str:
-    """Speak [(language_code, text), …] in order as one continuous audio file."""
-    chunks = [_speak_once(text, lang) for lang, text in segments if text.strip()]
-    if not chunks:
+    """Speak [(language_code, text), …] in order as one continuous audio file.
+
+    The segments are independent, so they are synthesised in parallel and
+    stitched back in the order they were written — a Hindi sentence plus its
+    English correction costs about the slowest segment, not the sum.
+    """
+    jobs = [(lang, part)
+            for lang, text in _merge_segments(segments)
+            for part in _split_for_tts(text)]
+    if not jobs:
         raise RuntimeError("nothing to speak")
-    data = concat_wavs(chunks)
+
+    chunks: list[bytes | None] = [None] * len(jobs)
+    with ThreadPoolExecutor(max_workers=min(6, len(jobs))) as pool:
+        futures = [pool.submit(_speak_once, text, lang) for lang, text in jobs]
+        for i, fut in enumerate(futures):
+            chunks[i] = fut.result()  # re-raises the first real failure
+    data = concat_wavs([c for c in chunks if c])
+    if len(data) < 4000:        # blank TTS answer — never hand that to STT
+        raise RuntimeError("Sarvam TTS returned blank audio")
     out = tempfile.mktemp(suffix=".wav", prefix="tutor_out_")
     with open(out, "wb") as f:
         f.write(data)
-    return out
+    return normalize_wav(out)

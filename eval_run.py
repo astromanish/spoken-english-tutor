@@ -20,32 +20,37 @@ from tutor import Tutor
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eval")
 
 # (utterance, language for synthesising it, what a correct tutor reply must do)
+# The conversation is role-played in English; corrections and stuck-moments
+# are explained in Hinglish (Hindi in Roman script).
 CASES = [
-    ("Hello, main aaj office ja raha hoon. Kal ek meeting hai.", "en-IN",
-     "Understands Hinglish, replies in English, keeps the conversation going."),
+    ("Mujhe English bolne mein thoda confidence nahi hai, beginner level par hoon.", "hi-IN",
+     "Takes the confidence answer, reports a level, and starts the role-play by asking the first interview question in English."),
     ("He go to school daily.", "en-IN",
-     "Corrects to 'He goes to school daily' and explains in Hindi."),
+     "Stays in English as the character, quotes the full corrected sentence \"He goes to school daily.\" and explains the -s for 'he' in Hinglish (Roman-script Hindi)."),
     ("I am agree with you.", "en-IN",
-     "Corrects to 'I agree with you' and explains in Hindi."),
+     "Quotes a corrected form of his sentence — \"I agree with you.\" or \"I agree.\" — explains in Hinglish that 'agree' is already a verb, then continues the conversation in English."),
     ("Yesterday I go to office and I am explain everything to my manager.", "en-IN",
-     "Catches the tense mistakes (went / explained), corrects them, explains briefly in Hindi."),
+     "Quotes a corrected sentence using the past tense (went / explained), explains it briefly in Hinglish, and keeps the conversation going in English."),
     ("mujhe samajh nahi aaya, aap phir se bolo", "hi-IN",
-     "Learner stuck in Hindi: explains in Hindi and steers back to English with the next question."),
+     "Learner stuck in Hinglish: unblocks him in Hinglish, gives the English sentence to repeat in double quotes, then continues the role-play in English."),
     ("She don't know nothing about the job.", "en-IN",
-     "Corrects the double negative / agreement ('She doesn't know') with a short Hindi explanation."),
+     "Quotes a corrected sentence such as \"She doesn't know anything about the job.\" or \"She does not know anything about the job.\" and explains the double negative in Hinglish."),
     ("Main bahut nervous hoon, interview mein kya bolun?", "hi-IN",
-     "Encouraging, answers in a mix that unblocks the learner, then continues the interview practice in English."),
+     "Encourages him and quotes a short English sentence he can use in the interview, staying in the interviewer role."),
     ("I am working in company from two years.", "en-IN",
-     "Corrects to 'I have been working ... for two years' (or 'I have worked ... for') with a Hindi explanation."),
+     "Quotes a correct present-perfect form — \"I have been working in a company for two years.\" or \"... in the company for two years\" (or 'I have worked ... for') — with a Hinglish explanation."),
     ("Last weekend I travelled to Jaipur with my cousins and we tried the local street food.", "en-IN",
-     "Nothing to correct: responds to the content naturally, keeps the conversation going, and may raise the difficulty."),
+     "Nothing to correct: responds in English as the character, may quote a richer English version, keeps the conversation going."),
 ]
 
-JUDGE_PROMPT = """You grade a spoken-English tutor's reply to one learner utterance.
+JUDGE_PROMPT = """You grade a spoken-English tutor's reply to one learner utterance in a ROLE-PLAY conversation.
+The tutor speaks English as the character; grammar and word-choice corrections (and unblocking a stuck learner) are explained in HINGLISH — Hindi written in Roman script, mixed with English words, e.g. "'He go' ki jagah 'He goes' bolna chahiye."
 Return one word: PASS or FAIL, then a short reason (max 20 words).
 
-PASS requires ALL of the expectation below being met. The tutor speaks English,
-may add a short Hindi explanation, and must not ignore the learner's problem.
+PASS requires ALL of these being met:
+- the reply is in English as the character, with Hinglish only for the correction or unblock line — never a whole reply in Devanagari Hindi,
+- when the expectation calls for a correction, the corrected English sentence appears in double quotes and the explanation is in Hinglish (Roman script),
+- the expectation below is met, and the learner's problem is not ignored.
 Reply as: PASS/FAIL — <reason>"""
 
 # ── judge ────────────────────────────────────────────────────────────────
@@ -71,20 +76,32 @@ def run() -> dict:
 
     for i, (text, lang, expectation) in enumerate(CASES, 1):
         # 1. speak the scripted utterance, 2. run it through the tutor
-        t0 = time.time()
-        audio = sarvam.speak(text, language_code=lang)
-        turn = tutor.turn(audio_path=audio)
-        wall = int((time.time() - t0) * 1000)
-
-        ok, reason = judge(text, turn.spoken_text, expectation)
-        rows.append({
-            "n": i, "said": text, "heard": turn.heard, "tutor": turn.spoken_text,
-            "expected": expectation, "pass": ok, "reason": reason,
-            "level": turn.level, "ms_stt": turn.ms_stt, "ms_llm": turn.ms_llm,
-            "ms_tts": turn.ms_tts, "ms_total": turn.ms_total, "ms_wall": wall,
-        })
-        print(f"[{i}/{len(CASES)}] {'PASS' if ok else 'FAIL'}  "
-              f"{turn.ms_total/1000:.1f}s  said={text[:46]!r}", flush=True)
+        try:
+            t0 = time.time()
+            audio = sarvam.speak(text, language_code=lang)
+            turn = tutor.turn(audio_path=audio)
+            wall = int((time.time() - t0) * 1000)
+            # judge the raw reply: the LEVEL: line is stripped from what is
+            # spoken, and case 1 is graded on the tutor reporting a level
+            raw = tutor.history[-1]["content"]
+            ok, reason = judge(text, raw, expectation)
+            row = {
+                "n": i, "said": text, "heard": turn.heard, "tutor": turn.spoken_text,
+                "expected": expectation, "pass": ok, "reason": reason,
+                "level": turn.level, "ms_stt": turn.ms_stt, "ms_llm": turn.ms_llm,
+                "ms_tts": turn.ms_tts, "ms_total": turn.ms_total, "ms_wall": wall,
+            }
+        except Exception as e:  # one bad case must not kill the run
+            row = {"n": i, "said": text, "heard": "", "tutor": "",
+                   "expected": expectation, "pass": False,
+                   "reason": f"ERROR {type(e).__name__}: {e}",
+                   "level": tutor.level, "ms_stt": 0, "ms_llm": 0, "ms_tts": 0,
+                   "ms_total": 0, "ms_wall": 0}
+        rows.append(row)
+        print(f"[{i}/{len(CASES)}] {'PASS' if row['pass'] else 'FAIL'}  "
+              f"{row['ms_total']/1000:.1f}s  said={text[:46]!r}  {row['reason'][:70]}",
+              flush=True)
+        time.sleep(3.0)   # pace the burst — Saaras answers 400 on bursts
 
     passed = sum(r["pass"] for r in rows)
     n = len(rows)

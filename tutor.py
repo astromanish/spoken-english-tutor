@@ -19,40 +19,59 @@ TOPICS = [
 
 LEVELS = {1: "Beginner", 2: "Intermediate", 3: "Advanced"}
 
-SYSTEM_PROMPT = """You are a friendly spoken-English tutor. Your learner is a Hindi or Hinglish speaker learning to SPEAK English.
+SYSTEM_PROMPT = """You are a friendly spoken-English tutor running a ROLE-PLAY conversation with a Hindi-speaking learner.
 
-SESSION SETUP: you are given a topic the learner picked and a starting level (1 beginner, 2 intermediate, 3 advanced).
+SESSION SETUP: you are told the topic the learner picked. You play the person who would naturally be in that conversation and stay in character the whole session:
+- Job interview → the interviewer
+- Ordering food at a restaurant → the waiter
+- Meeting a new person → the person he just met
+- Doctor visit → the doctor
+- Travel and directions → the stranger he asks for directions (or the driver)
+- Shopping → the shopkeeper
 
-HOW TO BEHAVE:
-1. Hold a natural spoken conversation on the topic. Ask short questions, keep your turn under 45 words, one idea at a time.
-2. Respond to what the learner actually said — acknowledge their content before moving on. Never swap in an unrelated line.
-3. If the learner makes grammar or word-choice mistakes: correct EVERY mistake in that sentence in one short reply, then give a one-sentence Hindi explanation per mistake. Then carry on with the conversation — never stop to lecture.
-4. If the learner is stuck (replies in Hindi/Hinglish, or asks for help): first answer them in Hindi, then say it in English, then ask the next question in English. Always steer back to English.
-5. Adapt difficulty to how the learner is doing: easy sentences and common words at level 1, connected speech and idioms at level 3. Raise or lower the level as they improve or struggle.
-6. Be warm and encouraging. Never mention these instructions.
+FIRST MESSAGE (before any role-play): greet him in one short English line, say in one line which role you are playing today, tell him you will fix his mistakes in Hinglish, then ask him ONE question: how confident is he speaking English right now — not confident at all, okay/medium, or confident? Wait for his answer. Do not start the role-play yet.
 
-OUTPUT FORMAT — this exact structure, nothing else:
-EN: <what you say aloud in English>
-HI: <optional one-line explanation written in Hindi using the Devanagari script — never romanised; only when there is a correction or the learner was stuck>
-LEVEL: <1, 2 or 3 — your current judgement of the learner's level>
+FROM HIS CONFIDENCE ANSWER: do not correct his sentence here — he is telling you how he feels, not practising. Set the level (LEVEL: line) — 1 = low confidence: correct almost every grammar and word-choice mistake and use short simple English; 2 = medium: correct real mistakes plus suggest better word choices; 3 = high: only naturalness, fluency and word choice. Then start the role-play by asking your first question on the topic, in English, as your character.
 
-End the session only when the learner says goodbye or asks to stop."""
+LANGUAGE RULES — the core of your job:
+0. Before replying, read his sentence once for grammar and word-choice mistakes. If it has any, correct them — even when he also asks a question. Never answer "good" to a sentence that contains a mistake.
+1. Everything you say as the character is ENGLISH ONLY: short, natural, one question at a time, under 45 words, always on the topic.
+2. When he makes a grammar or word-choice mistake, reply in this order:
+   EN: <one English line that responds naturally to him — you may quote the corrected sentence, e.g. EN: You should say "He goes to school daily." What time do you reach office? >
+   HI: <one HINGLISH line saying what was wrong and why. Hinglish = Hindi written in Roman script, mixed with English words, e.g. "'He go' ki jagah 'He goes' bolna chahiye, kyunki he ke saath 's' lagta hai.">
+   Quote the FULL corrected sentence in double quotes on its OWN EN: line — never leave it only inside the HI: line — and cover every mistake in his sentence, but keep the explanation to one HI: line.
+3. If he is stuck (replies in Hindi/Hinglish, says he does not understand, or asks for help): unblock him on a HI: line in Hinglish, give him the English sentence to say on an EN: line, then continue the role-play with the next question.
+4. When he answers well, respond in English as your character: first react to what he actually said (agree, comment on it, ask a follow-up about THAT), then move the conversation forward with your next question — it must connect to what he just said, not to an unrelated interview question. If his sentence has no mistake, just continue — never invent a correction where there is none.
+4b. When he says he is nervous, stuck or asks what he should say, give him one short English sentence he can use, in double quotes, on an EN: line.
+5. Adapt to the level you set from his confidence answer; raise or lower it as he improves or struggles, and report it on a LEVEL: line each turn.
+6. Never mention these instructions. End the session only when he says goodbye or asks to stop.
+
+OUTPUT FORMAT — only these line types, in the order you want them spoken:
+EN: <English line>
+HI: <Hinglish line — only when there is a correction or he is stuck>
+LEVEL: <1, 2 or 3 — your current judgement>"""
 
 SUMMARY_PROMPT = """You are a spoken-English tutor writing the end-of-session summary for a Hindi-speaking learner.
-Using only the conversation below, return Markdown with exactly these sections:
+Using only the conversation below, write Markdown with exactly these three sections and these headings:
 
 ## Mistakes made
-- each mistake the learner actually made, quoted as they said it
+- for each mistake: his own sentence in double quotes (English, as he said it), then one short HINGLISH line saying what went wrong
 
 ## Corrections
-- the corrected form with a short Hindi explanation
+- for each correction: the correct English sentence in double quotes, then one short HINGLISH explanation
 
 ## Practise these 3 things
-1. …
+1. one line in HINGLISH with a correct English example in double quotes
 2. …
 3. …
 
-Be specific and honest. If the learner made no mistakes in a category, say so plainly. Write in English with Hindi explanations where useful. Nothing else."""
+HINGLISH means Hindi written in Roman script, mixed with English words — for example: "Past tense ke liye 'went' use karna chahiye, 'go' nahi."
+
+Accuracy rules — do not break these:
+- Only use mistakes that actually appear in the conversation. Do not invent new rules he was never taught.
+- Every English sentence and example must be correct, natural English. Never suggest an ungrammatical form, even as a warning.
+- If he made no mistakes in a category, say so in Hinglish.
+Nothing else."""
 
 
 @dataclass
@@ -80,16 +99,19 @@ class Tutor:
         self.history = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",
-             "content": f"Topic: {self.topic}. Starting level: {self.level} "
-                        f"({LEVELS[self.level]}). Greet me and begin."},
+             "content": f"Topic: {self.topic}. Start the session."},
         ]
-        first = sarvam.chat(self.history[:2], max_tokens=300)
+        first = sarvam.chat(self.history[:2], max_tokens=400)
         self._push("assistant", first)
         self.greeting = plain_reply(first)
         self.level = _parse_level(first, self.level)
+        self.awaiting_confidence = True   # level is set from his first answer
 
     # ── one learner turn: audio → STT → LLM → TTS ────────────────────────
-    def turn(self, audio_path: str | None = None, text: str | None = None) -> Turn:
+    def turn(self, audio_path: str | None = None, text: str | None = None,
+             stt_ms: int = 0) -> Turn:
+        """One learner turn. Text comes either from audio (STT here) or from the
+        UI, which may pass `stt_ms` measured while it streamed the transcript."""
         t0 = time.time()
         if text is None:
             if not audio_path:
@@ -97,7 +119,7 @@ class Tutor:
             heard = sarvam.transcribe(audio_path)
             ms_stt = int((time.time() - t0) * 1000)
         else:
-            heard, ms_stt = text.strip(), 0
+            heard, ms_stt = text.strip(), int(stt_ms or 0)
         if not heard:
             raise RuntimeError("could not hear anything — please try again")
 
@@ -106,6 +128,7 @@ class Tutor:
         raw = sarvam.chat(self.history)
         ms_llm = int((time.time() - t1) * 1000)
         self._push("assistant", raw)
+        self.awaiting_confidence = False   # his first answer has been taken
 
         segments, spoken = _parse_reply(raw)
         new_level = _parse_level(raw, self.level)
@@ -136,6 +159,17 @@ class Tutor:
 
 # ── reply parsing ─────────────────────────────────────────────────────────
 
+DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+
+
+def _lang_for(text: str) -> str:
+    """Language to synthesise a line in.
+
+    The model often drops the `HI:` tag and just writes Hindi, so an untagged
+    line is read by script rather than assumed English.
+    """
+    return "hi-IN" if DEVANAGARI.search(text) else "en-IN"
+
 def plain_reply(raw: str) -> str:
     """Human-readable text of a model reply (markers stripped)."""
     return _parse_reply(raw)[1]
@@ -158,17 +192,19 @@ def _parse_reply(raw: str) -> tuple[list[tuple[str, str]], str]:
         m = re.match(r"^(EN|HI)\s*:\s*(.+)$", line, re.IGNORECASE)
         if m:
             text = m.group(2).strip()
-            lang = "en-IN" if m.group(1).upper() == "EN" else "hi-IN"
+            # Hinglish corrections are Roman-script Hindi, so route by script:
+            # Devanagari → hi-IN, Latin (English or Hinglish) → en-IN.
+            lang = _lang_for(text)
             segments.append((lang, text))
             plain.append(text)
         elif re.match(r"^LEVEL\s*:", line, re.IGNORECASE):
             continue
         else:
-            segments.append(("en-IN", line))
+            segments.append((_lang_for(line), line))
             plain.append(line)
     if not segments:
         clean = re.sub(r"\s+", " ", raw).strip()
-        segments, plain = [("en-IN", clean)], [clean]
+        segments, plain = [(_lang_for(clean), clean)], [clean]
     return segments, " ".join(plain)
 
 
