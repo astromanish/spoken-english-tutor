@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Priyanka (Spoken English Tutor)</title>
+<title>Priyanka — live spoken English tutor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,60 +12,84 @@
 <body>
 <main>
   <header class="masthead">
-    <p class="eyebrow">Hindi → English · role-play practice</p>
-    <h1>Priyanka ( Spoken English Tutor )</h1>
+    <p class="eyebrow">Hindi → English · live voice role-play</p>
+    <h1>Priyanka</h1>
     <p class="lede">
-      Pick a topic and press <strong>Start</strong>. Your tutor plays a character —
-      an interviewer, a waiter, a doctor — and holds the whole conversation in
-      English, asking you questions on your topic. Every grammar or word-choice
-      mistake is corrected in <strong>Hinglish</strong>, so you always understand why.
+      Pick a scenario and press <strong>Start</strong>. Her ear is on the whole time —
+      talk whenever you like, and two seconds of quiet hands her the turn. She plays
+      the interviewer, the waiter, the doctor, and fixes every mistake in
+      <strong>Hinglish</strong>.
     </p>
   </header>
 
-  <section class="card setup">
+  <section class="card setup" id="setup">
     <label class="field">
-      <span>Topic</span>
+      <span>Scenario</span>
       <select id="topic"></select>
     </label>
-    <button id="start" class="primary">Start</button>
+    <button id="start" class="primary">Start session</button>
   </section>
 
-  <section class="card session">
-    <div class="session-head">
+  <section class="card stage" id="stage">
+    <div class="stage-head">
       <span id="badge" class="badge">Level · not set yet</span>
-      <span id="status" class="status"></span>
+      <span id="status" class="status">Idle</span>
     </div>
 
-    <div id="chat" class="chat" aria-live="polite">
-      <p class="empty">No session yet — press Start.</p>
-    </div>
-
-    <div id="live" class="live" hidden>
-      <div class="live-head">
-        <span class="live-label">You · live</span>
-        <span id="liveLang" class="live-lang"></span>
+    <div class="orb-wrap">
+      <div class="orb" id="orb" data-state="idle">
+        <span class="orb-ring ring-a"></span>
+        <span class="orb-ring ring-b"></span>
+        <span class="orb-core">
+          <span class="bars" id="bars" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </span>
+        </span>
       </div>
-      <p id="liveText" class="live-text"></p>
+      <div class="senses">
+        <span class="sense" id="senseEar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20.5a4.5 4.5 0 0 0 4.5-4.5v-1.4"/><path d="M6.2 10.5a5.8 5.8 0 1 1 11.6 0c0 3-2.1 3.9-2.1 6.6a4.2 4.2 0 0 1-7.5 2.4"/><path d="M9.6 10.6a2.4 2.4 0 0 1 4.8 0"/></svg>
+          <span>Ear <b id="earState">off</b></span>
+        </span>
+        <span class="sense" id="senseMouth">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 11.4c2.7-2.1 5.6-3.1 8.4-3.1s5.7 1 8.4 3.1c-2.7 2.6-5.6 3.9-8.4 3.9s-5.7-1.3-8.4-3.9Z"/><path d="M9 9c1 1 2 1.5 3 1.5"/></svg>
+          <span>Mouth <b id="mouthState">ready</b></span>
+        </span>
+      </div>
     </div>
 
-    <div class="composer">
-      <button id="mic" class="round" title="Record from the microphone"
-              aria-label="Record from the microphone">🎙</button>
-      <input id="typed" type="text" autocomplete="off" enterkeyhint="send"
-             placeholder="…or type if you cannot speak right now">
-      <button id="send" class="primary">Send</button>
+    <div class="captions">
+      <p class="cap you">
+        <span class="cap-label">You</span>
+        <span class="cap-text" id="capYou">—</span>
+      </p>
+      <p class="cap tutor">
+        <span class="cap-label">Priyanka</span>
+        <span class="cap-text" id="capTutor">—</span>
+      </p>
     </div>
 
-    <audio id="player" preload="auto" hidden></audio>
+    <div class="controls">
+      <button id="mic" class="toggle" aria-pressed="true" disabled>
+        <span class="toggle-icon" aria-hidden="true">
+          <svg class="ico-on" viewBox="0 0 24 24"><path d="M12 4.5a2.6 2.6 0 0 1 2.6 2.6v5a2.6 2.6 0 0 1-5.2 0v-5A2.6 2.6 0 0 1 12 4.5Z"/><path d="M6.5 11.2a5.5 5.5 0 0 0 11 0"/><path d="M12 16.7V20"/></svg>
+          <svg class="ico-off" viewBox="0 0 24 24"><path d="M4 4l16 16"/><path d="M15.5 15a5.5 5.5 0 0 1-9-3.8"/><path d="M9.4 4.9A2.6 2.6 0 0 1 14.6 6v3.2"/><path d="M12 16.7V20"/></svg>
+        </span>
+        <span id="micLabel">Mute ear</span>
+      </button>
+      <button id="end" class="ghost" disabled>End · written summary</button>
+    </div>
+
+    <p class="metric" id="metric"></p>
+    <audio id="player" preload="auto"></audio>
   </section>
-
-  <button id="end" class="ghost wide">End session — get written summary</button>
 
   <section id="summaryCard" class="card summary" hidden>
     <h2>Session summary</h2>
     <div id="summary"></div>
   </section>
 </main>
+<script src="/static/vad.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

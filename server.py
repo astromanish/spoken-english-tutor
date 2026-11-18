@@ -22,6 +22,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import realtime
+import sarvam
 from tutor import LEVELS, TOPICS, Tutor
 
 HOST = os.environ.get("TUTOR_HOST", "127.0.0.1")
@@ -122,8 +123,25 @@ class Handler(BaseHTTPRequestHandler):
             # message and sets the correction level from the answer.
             tutor = Tutor(topic=topic)
             _state["tutor"] = tutor
+
+            # The first message is spoken, not printed: it is synthesised here
+            # so the browser can start the ear and the mouth in the same beat.
+            greeting_audio, warning = "", ""
+            try:
+                path = sarvam.speak_mixed(tutor.greeting_segments)
+                try:
+                    with open(path, "rb") as f:
+                        token = remember_audio(f.read())
+                finally:
+                    _unlink(path)
+                greeting_audio = f"/audio/{token}.wav"
+            except Exception as e:  # the session still runs, just silently
+                warning = f"Greeting could not be spoken: {type(e).__name__}: {e}"
+
             self._json({
                 "greeting": tutor.greeting,
+                "audio": greeting_audio,
+                "warning": warning,
                 "level": tutor.level,
                 "level_name": LEVELS.get(tutor.level, "?"),
                 "awaiting_confidence": tutor.awaiting_confidence,

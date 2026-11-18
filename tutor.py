@@ -121,6 +121,7 @@ class Tutor:
         first = sarvam.chat(self.history[:2], max_tokens=400)
         self._push("assistant", first)
         self.greeting = plain_reply(first)
+        self.greeting_segments = plain_segments(first)   # spoken out loud on start
         self.level = _parse_level(first, self.level)
         self.awaiting_confidence = True   # level is set from his first answer
 
@@ -226,6 +227,12 @@ def plain_reply(raw: str) -> str:
     """
     first, second = split_reply(raw)
     return " ".join(p for p in (_parse_reply(first)[1], _parse_reply(second)[1]) if p)
+
+
+def plain_segments(raw: str) -> list[tuple[str, str]]:
+    """The same reply as speakable (language, text) segments, in written order."""
+    first, second = split_reply(raw)
+    return _parse_reply(first)[0] + _parse_reply(second)[0]
 
 
 def _parse_reply(raw: str) -> tuple[list[tuple[str, str]], str]:

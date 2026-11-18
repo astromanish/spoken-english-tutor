@@ -23,7 +23,8 @@ Bulbul v3 (text-to-speech). No other model provider is involved.
 | 5 | Adapts difficulty to the learner's level | confidence question in the first message sets `LEVEL`, re-judged every turn |
 | 6 | Ends with a written summary: mistakes, corrections, 3 practice items | **End session** button |
 | 7 | Simple UI | vanilla JS (`static/`) on a stdlib server (`server.py`) |
-| + | Live transcript while you speak | `realtime.py`, the live panel above the mic |
+| + | A live voice agent, not a chat box | ears and mouth always on: `static/app.js` + `static/vad.js` |
+| + | Turn ends after 2 s of silence, mic can be muted | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
 
 ## Run it
 
@@ -36,17 +37,47 @@ export SARVAM_API_KEY=...        # https://dashboard.sarvam.ai → API keys
 .venv/bin/python server.py       # → http://127.0.0.1:7860
 ```
 
-Press **Start** and the tutor introduces its character, then asks how confident
-you are speaking English — that answer sets how much it corrects you. Tap the
-mic and speak (or type); the tutor replies aloud and keeps the conversation
-going. **End session** writes the summary.
+Press **Start** and her ear opens while her first line plays out loud: she
+introduces her character and asks how confident you are speaking English — that
+answer sets how much she corrects you. Then just talk. She answers out loud,
+asks the next thing, and keeps going; **End** writes the summary.
 
-While the mic is open, a live transcript of what Saaras hears appears above it;
-press the mic again and that transcript becomes your turn.
+There is no text box and no transcript log. The ear stays open the whole
+session, including while she is speaking — if you talk over her she stops
+mid-sentence and takes what you said instead. **Mute ear** closes the mic for
+real (the track is stopped, so the OS indicator goes out) and reopens it when
+you unmute.
 
 `ffmpeg` on your `PATH` converts the fallback recording (a browser upload posted
 to `/api/turn`) into the 16 kHz WAV that Saaras expects; without it, WAV uploads
 still work and the streaming path is unaffected.
+
+## The live loop
+
+Everything the browser does each ~256 ms block of microphone audio:
+
+- **Level** → an RMS, which drives the orb and the turn-taking.
+- **Speech** → the PCM goes to `POST /api/stream/<id>/audio`, so Saaras' live
+  transcript fills the *You* line as you speak.
+- **Silence** → after **2.0 s** with nothing above the gate (and at least 350 ms
+  of speech in the utterance, so a cough is not a turn) the stream is stopped,
+  the final transcript becomes your turn, and the next stream opens immediately
+  so the ear is never shut while she thinks or speaks.
+- **Barge-in** → talking while she is speaking is detected at a higher gate
+  (0.05 RMS, versus 0.018 when she is quiet) and cuts her playback instead of
+  waiting for her to finish.
+
+The rule lives in `static/vad.js` as a DOM-free `TurnWatcher`, so it can be
+tested without a microphone:
+
+```bash
+node --test tests/         # 6 tests: the 2 s edge, coughs, room noise, echo
+```
+
+Thresholds were measured, not guessed: Bulbul speech sits around 0.09 RMS, a
+quiet room near 0.002, and digital silence at 0.0 — a 40× margin under the
+gate. `echoCancellation`, `noiseSuppression` and `autoGainControl` are all on
+for the mic, which is what keeps her own voice out of the turn-taking.
 
 ## Why these models
 
@@ -194,7 +225,9 @@ mistakes — 10/10 in `e2e` testing.
 ```
 server.py      HTTP server + JSON API (stdlib, no framework)
 realtime.py    live transcription: PCM in over HTTP, one websocket to Saaras
-static/        index.html, style.css, app.js — the whole UI
+static/        index.html, style.css, app.js — the whole voice UI
+static/vad.js  turn-taking: silence → turn, barge-in — DOM-free, node-tested
+tests/         node --test tests/ — the silence rule and its edge cases
 tutor.py       session state, tutor prompt, turn handling, summary
 sarvam.py      the three Sarvam API clients + audio helpers
 eval_run.py    scripted evaluation → eval/results.{json,md}
