@@ -38,22 +38,13 @@ main {
 .masthead { padding: 6px 2px 2px; }
 
 .eyebrow {
-  margin: 0 0 10px;
-  font-size: 11px;
+  margin: 0 0 12px;
+  font-size: clamp(19px, 2.6vw, 25px);
   font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
-h1 {
-  margin: 0 0 10px;
-  font-family: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
-  font-size: clamp(32px, 5.2vw, 44px);
-  font-weight: 600;
-  font-optical-sizing: auto;
-  line-height: 1.04;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--ink);
+  font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
 }
 
 .lede {
@@ -92,17 +83,36 @@ h1 {
   align-items: center;
   justify-content: flex-end;
 }
-.field span { font-size: 13px; color: var(--muted); font-weight: 600; }
+.field span {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 select {
   font: inherit;
-  color: inherit;
-  background: #fff;
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--ink);
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6b70' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 13px center;
+  background-size: 15px;
+  -webkit-appearance: none;
+  appearance: none;
   border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 9px 11px;
+  border-radius: 10px;
+  padding: 11px 38px 11px 13px;
   width: 100%;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+
+select:hover:not(:disabled) { border-color: #d3d3cd; }
+select:disabled { background-color: #fafaf8; color: var(--muted); cursor: not-allowed; }
 
 select:focus, button:focus-visible {
   outline: 2px solid var(--accent);
@@ -284,89 +294,56 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
   50% { transform: scale(1.04); opacity: 0.95; }
 }
 
-.senses { display: flex; gap: 8px; }
-
-.sense {
+.state-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--muted);
-  border: 1px solid var(--line);
+  padding: 5px 14px 5px 6px;
   border-radius: 999px;
-  background: #fff;
-  padding: 3px 13px 3px 3px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-/* each sense gets its own tinted disc, so ear and mouth read apart at a glance */
-.sense .ico {
-  --disc: #f0f0ec; /* the disc colour doubles as the "teeth gap" in the mouth */
-  width: 27px;
-  height: 27px;
+.state-pill[hidden] { display: none; }
+
+.state-ico {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
+  background: #dcebe2;
   display: grid;
   place-items: center;
-  background: var(--disc);
+}
+
+.state-ico svg { width: 15px; height: 15px; display: none; }
+.state-pill[data-state="listening"] .i-ear,
+.state-pill[data-state="hearing"] .i-ear,
+.state-pill[data-state="speaking"] .i-mouth,
+.state-pill[data-state="thinking"] .i-think { display: block; }
+
+/* hearing and thinking change the accent, not the shape */
+.state-pill[data-state="hearing"] {
+  border-color: #f0cdc9;
+  background: #fdf1f0;
+  color: var(--live);
+}
+.state-pill[data-state="hearing"] .state-ico { background: #f9dcd7; }
+
+.state-pill[data-state="thinking"] {
+  border-color: var(--line);
+  background: #fafaf7;
   color: var(--muted);
-  transition: background 0.25s ease, color 0.25s ease;
 }
-
-.sense .ico svg { width: 17px; height: 17px; display: block; }
-
-/* icon primitives — stroke for the drawing, fl for the tinted fill */
-svg .st {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.state-pill[data-state="thinking"] .state-ico { background: #eeeeea; }
+.state-pill[data-state="thinking"] .i-think .ring {
+  stroke-dasharray: 30 16;
+  transform-origin: 12px 12px;
+  animation: spin 1.1s linear infinite;
 }
-
-svg .fl { fill: currentColor; stroke: none; opacity: 0.16; }
-svg .seam { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; opacity: 0.5; }
-svg .cav { fill: currentColor; stroke: none; opacity: 0.95; } /* a solid cavity is what makes it read as OPEN at 17px */
-svg .teeth { fill: none; stroke: var(--disc, #f0f0ec); stroke-width: 1.7; stroke-linecap: round; }
-svg .wave { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; opacity: 0.85; }
-
-.sense b { font-weight: 600; color: var(--ink); }
-
-.sense.on { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
-.sense.on .ico { --disc: #dcebe2; color: var(--accent); }
-.sense.on b { color: var(--accent); }
-.sense.hot { border-color: #f0cdc9; color: var(--live); background: #fdf1f0; }
-.sense.hot .ico { --disc: #f9dcd7; color: var(--live); }
-.sense.hot .ico { animation: earPulse 1.3s ease-in-out infinite; }
-.sense.hot b { color: var(--live); }
-.sense.off .ico { --disc: #eaeae6; }
-.sense.off b { color: var(--muted); }
-
-/* the mouth opens while she talks */
-#senseMouth .m-open { display: none; }
-#senseMouth.speaking .m-closed { display: none; }
-#senseMouth.speaking .m-open { display: block; }
-#senseMouth.speaking .m-open .cav { animation: lip 620ms ease-in-out infinite; }
-/* the sound waves breathe while she talks, so "speaking" needs no label */
-#senseMouth.speaking .m-open .w1 { animation: wave 900ms ease-in-out infinite; }
-#senseMouth.speaking .m-open .w2 { animation: wave 900ms ease-in-out 180ms infinite; }
-
-/* the mouth moves while she talks; the ear breathes while it hears */
-@keyframes lip {
-  0%, 100% { opacity: 0.82; }
-  50% { opacity: 1; }
-}
-
-@keyframes wave {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
-@keyframes earPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
-}
-
-/* ── captions ──────────────────────────────────────────────────────────── */
 
 .captions {
   display: flex;
@@ -416,42 +393,36 @@ svg .wave { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap:
   flex-wrap: wrap;
 }
 
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 15px 9px 12px;
+.round {
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
   border-color: var(--accent-line);
-  color: var(--accent);
   background: var(--accent-soft);
+  color: var(--accent);
 }
 
-.toggle:hover:not(:disabled) { background: #eaf1ed; }
+.round:hover:not(:disabled) { background: #eaf1ed; }
 
-.toggle-icon svg {
-  width: 19px;
-  height: 19px;
+.round svg {
+  width: 21px;
+  height: 21px;
   display: block;
 }
 
-.toggle .ico-off { display: none; }
-
-.toggle[aria-pressed="false"] {
-  color: var(--muted);
-  background: #f4f4f2;
-  border-color: var(--line);
+.round .ico-off { display: none; }
+.round[aria-pressed="false"] {
+  color: var(--live);
+  border-color: #f0cdc9;
+  background: #fdf1f0;
 }
-.toggle[aria-pressed="false"] .ico-on { display: none; }
-.toggle[aria-pressed="false"] .ico-off { display: block; }
+.round[aria-pressed="false"] .ico-on { display: none; }
+.round[aria-pressed="false"] .ico-off { display: block; }
 
-.metric {
-  margin: 0;
-  min-height: 1.3em;
-  font-size: 11.5px;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
+.round svg .slash { opacity: 0.9; }
 
 /* ── summary ───────────────────────────────────────────────────────────── */
 
@@ -483,6 +454,6 @@ svg .wave { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap:
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orb-ring, .bars i, .sense .ico, #senseMouth .m-open .cav, #senseMouth .m-open .wave { animation: none !important; }
+  .orb-ring, .bars i, .state-pill .i-think .ring, .state-pill .i-mouth .wave { animation: none !important; }
   .orb-core { transition: none; }
 }

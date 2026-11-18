@@ -3,7 +3,7 @@
  * No composer, no transcript log: the ear is open the whole session and the
  * mouth answers out loud. The browser does the turn-taking locally — it watches
  * the mic level, feeds 16 kHz PCM to the server's Sarvam stream while the
- * learner talks, and sends the turn once they have been quiet for 2 s.
+ * learner talks, and sends the turn once they have been quiet for 0.5 s.
  *
  *   GET  /api/meta                topics
  *   POST /api/session             → greeting text + spoken greeting WAV
@@ -27,23 +27,20 @@ const els = {
   capYou: $('capYou'),
   capTutor: $('capTutor'),
   mic: $('mic'),
-  micLabel: $('micLabel'),
   end: $('end'),
   player: $('player'),
   metric: $('metric'),
   summaryCard: $('summaryCard'),
   summary: $('summary'),
-  senseEar: $('senseEar'),
-  senseMouth: $('senseMouth'),
-  earState: $('earState'),
-  mouthState: $('mouthState'),
+  statePill: $('statePill'),
+  stateLabel: $('stateLabel'),
 };
 
 /* ── tuning ─────────────────────────────────────────────────────────────── */
 
 const STT_RATE = 16000;   // Saaras realtime wants linear16 mono at 16 kHz
 const FLUSH_MS = 250;     // how much audio each upload carries
-const SILENCE_MS = 2000;  // quiet this long and the turn is hers
+const SILENCE_MS = 500;   // quiet this long and the turn is hers
 const MIN_SPEECH_MS = 350; // shorter than this is a cough, not a sentence
 const GATE_BASE = 0.018;  // RMS floor for "someone is talking"
 const GATE_SPEAKING = 0.05; // higher while she is talking: that is barge-in
@@ -90,12 +87,20 @@ const STATE_TEXT = {
   idle: 'Idle',
   connecting: 'Connecting — she speaks first…',
   listening: 'Ear on — speak whenever you like',
-  hearing: 'Hearing you — she takes the turn after 2 s of quiet',
+  hearing: 'Hearing you — she takes the turn after half a second of quiet',
   thinking: 'Thinking…',
   speaking: 'She is speaking — talk over her any time',
   muted: 'Ear off — nothing is being recorded',
   ended: 'Session ended',
 };
+
+/** aria-pressed is the truth for the mic icon: true = muted (crossed mic). */
+function setMicPressed(isMuted) {
+  els.mic.setAttribute('aria-pressed', String(!isMuted));
+  const label = isMuted ? 'Unmute microphone' : 'Mute microphone';
+  els.mic.setAttribute('aria-label', label);
+  els.mic.title = label;
+}
 
 function setStatus(text, warn = false) {
   els.status.textContent = text;
@@ -106,20 +111,24 @@ function setState(name, text, warn = false) {
   stateName = name;
   els.orb.dataset.state = name;
   setStatus(text || STATE_TEXT[name] || '', warn);
-  paintSenses();
+  paintState();
 }
 
-function paintSenses() {
-  const earOn = started && !muted;
-  const hearing = stateName === 'hearing';
-  els.senseEar.classList.toggle('on', earOn && !hearing);
-  els.senseEar.classList.toggle('hot', earOn && hearing);
-  els.senseEar.classList.toggle('off', !earOn);
-  els.earState.textContent = !started ? 'off' : muted ? 'off' : hearing ? 'hearing' : 'on';
+/* The stage stays quiet at rest: the pill appears only for a state that is
+   happening right now (listening, hearing, thinking, speaking). */
+const PILL = {
+  listening: 'Listening',
+  hearing: 'Listening to you',
+  thinking: 'Thinking',
+  speaking: 'Speaking',
+};
 
-  els.senseMouth.classList.toggle('on', speaking);
-  els.senseMouth.classList.toggle('speaking', speaking); // lips part while she talks
-  els.mouthState.textContent = speaking ? 'speaking' : 'ready';
+function paintState() {
+  const label = PILL[stateName];
+  els.statePill.hidden = !label;
+  if (!label) return;
+  els.statePill.dataset.state = stateName;
+  els.stateLabel.textContent = label;
 }
 
 function setCap(which, text) {
@@ -269,9 +278,9 @@ function pump() {
   const url = audioQueue.shift();
   if (!url) {
     speaking = false;
-    if (stateName === 'hearing') return paintSenses(); // he is mid-sentence
+    if (stateName === 'hearing') return paintState(); // he is mid-sentence
     if (started) setState(muted ? 'muted' : 'listening');
-    else paintSenses();
+    else paintState();
     return;
   }
   playing = true;
@@ -307,11 +316,11 @@ els.player.addEventListener('ended', () => {
   // he cut her off and is talking: stay on "hearing", do not fall back to
   // "listening" the instant her file stops
   if (stateName === 'hearing') {
-    paintSenses();
+    paintState();
     return;
   }
   if (started) setState(muted ? 'muted' : 'listening');
-  else paintSenses();
+  else paintState();
 });
 
 /** The learner talked over her: cut the voice, keep the ear. */
@@ -680,8 +689,7 @@ async function startSession() {
     els.preview.disabled = true;
     els.mic.disabled = false;
     els.end.disabled = false;
-    els.mic.setAttribute('aria-pressed', 'true');
-    els.micLabel.textContent = 'Mute ear';
+    setMicPressed(false);
     setBadge(data);
     setCap('tutor', data.greeting);
     setCap('you', '');
@@ -697,13 +705,12 @@ async function startSession() {
       els.preview.disabled = false;
       els.mic.disabled = true;
       els.end.disabled = true;
-      els.mic.setAttribute('aria-pressed', 'true');
-      els.micLabel.textContent = 'Mute ear';
+      setMicPressed(false);
       setState('idle', `⚠️ Microphone unavailable: ${earError} — press Start to retry`, true);
       return;
     }
     earError = '';
-    paintSenses();
+    paintState();
     setState('speaking');
     enqueueAudio(data.audio); // her first line, out loud
     if (data.warning) setStatus(`⚠️ ${data.warning}`, true);
@@ -717,8 +724,7 @@ async function startSession() {
 async function toggleEar() {
   if (!started) return;
   muted = !muted;
-  els.mic.setAttribute('aria-pressed', String(!muted));
-  els.micLabel.textContent = muted ? 'Unmute ear' : 'Mute ear';
+  setMicPressed(muted);
 
   if (muted) {
     watcher.reset();
@@ -761,8 +767,7 @@ async function endSession() {
     els.topic.disabled = false;
     els.voice.disabled = false;
     els.preview.disabled = false;
-    els.mic.setAttribute('aria-pressed', 'true');
-    els.micLabel.textContent = 'Mute ear';
+    setMicPressed(false);
     setState('ended');
   } catch (e) {
     els.end.disabled = false;

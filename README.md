@@ -25,7 +25,7 @@ Bulbul v3 (text-to-speech). No other model provider is involved.
 | 7 | Simple UI | vanilla JS (`static/`) on a stdlib server (`server.py`) |
 | + | A live voice agent, not a chat box | ears and mouth always on: `static/app.js` + `static/vad.js` |
 | + | Five voices to choose from, with a preview | Voice select + `POST /api/preview` |
-| + | Turn ends after 2 s of silence, mic can be muted | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
+| + | Turn ends after **0.5 s** of silence; one icon mutes the mic | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
 
 ## Run it
 
@@ -55,9 +55,9 @@ rather than failing the start.
 
 There is no text box and no transcript log. The ear stays open the whole
 session, including while she is speaking — if you talk over her she stops
-mid-sentence and takes what you said instead. **Mute ear** closes the mic for
-real (the track is stopped, so the OS indicator goes out) and reopens it when
-you unmute.
+mid-sentence and takes what you said instead. The round **mic button** closes the
+microphone for real — the track is stopped, so the OS indicator goes out — and
+shows a crossed mic while it is closed.
 
 `ffmpeg` on your `PATH` converts the fallback recording (a browser upload posted
 to `/api/turn`) into the 16 kHz WAV that Saaras expects; without it, WAV uploads
@@ -70,7 +70,7 @@ Everything the browser does each ~256 ms block of microphone audio:
 - **Level** → an RMS, which drives the orb and the turn-taking.
 - **Speech** → the PCM goes to `POST /api/stream/<id>/audio`, so Saaras' live
   transcript fills the *You* line as you speak.
-- **Silence** → after **2.0 s** with nothing above the gate (and at least 350 ms
+- **Silence** → after **0.5 s** with nothing above the gate (and at least 350 ms
   of speech in the utterance, so a cough is not a turn) the stream is stopped,
   the final transcript becomes your turn, and the next stream opens immediately
   so the ear is never shut while she thinks or speaks.
@@ -78,6 +78,9 @@ Everything the browser does each ~256 ms block of microphone audio:
   (0.05 RMS, versus 0.018 when she is quiet) and cuts her playback instead of
   waiting for her to finish; the ear stays open and the UI stays on *hearing*
   until he stops.
+- **Half a second is a short leash**, so the continuation rule below earns its
+  keep: a learner who pauses to think mid-sentence gets cut off, keeps talking,
+  and her held answer is folded into the whole sentence instead of a fragment.
 - **A pause mid-sentence does not split the turn** → if he starts talking again
   while she is still *thinking* (before any of her answer has been heard), that
   answer is held, not spoken over him, and his fragment is carried into the next
@@ -90,7 +93,7 @@ The rule lives in `static/vad.js` as a DOM-free `TurnWatcher`, so it can be
 tested without a microphone:
 
 ```bash
-node --test                # 13 tests: the 2 s edge, coughs, room noise, echo,
+node --test                # 17 tests: the 0.5 s edge, coughs, room noise, echo,
                            #            barge-in vs continuation merge, held replies
 ```
 

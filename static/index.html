@@ -13,12 +13,10 @@
 <main>
   <header class="masthead">
     <p class="eyebrow">Role Playing Spoken English Tutor</p>
-    <h1>Priyanka</h1>
     <p class="lede">
-      Pick a scenario and press <strong>Start</strong>. Her ear is on the whole time —
-      talk whenever you like, and two seconds of quiet hands her the turn. She plays
-      the interviewer, the waiter, the doctor, and fixes every mistake in
-      <strong>Hinglish</strong>.
+      Pick a scenario and press <strong>Start</strong>. Talk whenever you like — half a
+      second of quiet hands her the turn. She plays the interviewer, the waiter, the
+      doctor, and fixes every mistake in <strong>Hinglish</strong>.
     </p>
   </header>
 
@@ -27,7 +25,7 @@
       <span>Scenario</span>
       <select id="topic"></select>
     </label>
-    <label class="field voice">
+    <label class="field">
       <span>Voice</span>
       <select id="voice"></select>
     </label>
@@ -48,39 +46,32 @@
         <span class="orb-ring ring-a"></span>
         <span class="orb-ring ring-b"></span>
         <span class="orb-core">
-          <span class="bars" id="bars" aria-hidden="true">
+          <span class="bars" aria-hidden="true">
             <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
           </span>
         </span>
       </div>
-      <div class="senses">
-        <span class="sense" id="senseEar">
-          <span class="ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path class="fl" d="M9.8 9.4a2.3 2.3 0 0 1 4.6-.2c0 1.6-1 1.9-1 3.1a1.8 1.8 0 0 1-3.5.7 1.9 1.9 0 0 1-.1-3.6Z"/>
-              <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
-              <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
-            </svg>
-          </span>
-          <span>Ear <b id="earState">off</b></span>
+
+      <!-- shown only while something is actually happening -->
+      <div class="state-pill" id="statePill" hidden>
+        <span class="state-ico" aria-hidden="true">
+          <svg class="i-ear" viewBox="0 0 24 24">
+            <path class="fl" d="M9.8 9.4a2.3 2.3 0 0 1 4.6-.2c0 1.6-1 1.9-1 3.1a1.8 1.8 0 0 1-3.5.7 1.9 1.9 0 0 1-.1-3.6Z"/>
+            <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
+            <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
+          </svg>
+          <svg class="i-mouth" viewBox="0 0 24 24">
+            <path class="st" d="M2.6 10.9c1.6-1.4 3.6-2.1 6-2.1s4.4.7 6 2.1c-1.2 4.3-3.2 6.5-6 6.5s-4.8-2.2-6-6.5Z"/>
+            <path class="cav" d="M4.1 11.2c1.5-.8 3-.1 4.5-.1s3-.7 4.5.1c-1.1 3-2.6 4.6-4.5 4.6s-3.4-1.6-4.5-4.6Z"/>
+            <path class="teeth" d="M4.6 11.9h8.2"/>
+            <path class="wave w1" d="M17.6 9.5a4.6 4.6 0 0 1 0 5.6"/>
+            <path class="wave w2" d="M20.4 7.8a8 8 0 0 1 0 9"/>
+          </svg>
+          <svg class="i-think" viewBox="0 0 24 24">
+            <circle class="st ring" cx="12" cy="12" r="7.4"/>
+          </svg>
         </span>
-        <span class="sense" id="senseMouth">
-          <span class="ico" aria-hidden="true">
-            <svg class="m-closed" viewBox="0 0 24 24">
-              <path class="fl" d="M3.4 12.1c2-2.4 4.4-2.8 5.8-1.7 1 .8 1.7 1.2 2.8 1.2s1.8-.4 2.8-1.2c1.4-1.1 3.8-.7 5.8 1.7-2 3.1-5.1 4.9-8.6 4.9s-6.6-1.8-8.6-4.9Z"/>
-              <path class="st" d="M3.4 12.1c2-2.4 4.4-2.8 5.8-1.7 1 .8 1.7 1.2 2.8 1.2s1.8-.4 2.8-1.2c1.4-1.1 3.8-.7 5.8 1.7-2 3.1-5.1 4.9-8.6 4.9s-6.6-1.8-8.6-4.9Z"/>
-              <path class="seam" d="M3.4 12.1h17.2"/>
-            </svg>
-            <svg class="m-open" viewBox="0 0 24 24">
-              <path class="st" d="M2.6 10.9c1.6-1.4 3.6-2.1 6-2.1s4.4.7 6 2.1c-1.2 4.3-3.2 6.5-6 6.5s-4.8-2.2-6-6.5Z"/>
-              <path class="cav" d="M4.1 11.2c1.5-.8 3-.1 4.5-.1s3-.7 4.5.1c-1.1 3-2.6 4.6-4.5 4.6s-3.4-1.6-4.5-4.6Z"/>
-              <path class="teeth" d="M4.6 11.9h8.2"/>
-              <path class="wave w1" d="M17.6 9.5a4.6 4.6 0 0 1 0 5.6"/>
-              <path class="wave w2" d="M20.4 7.8a8 8 0 0 1 0 9"/>
-            </svg>
-          </span>
-          <span>Mouth <b id="mouthState">ready</b></span>
-        </span>
+        <span id="stateLabel">Listening</span>
       </div>
     </div>
 
@@ -96,20 +87,19 @@
     </div>
 
     <div class="controls">
-      <button id="mic" class="toggle" aria-pressed="true" disabled>
-        <span class="toggle-icon" aria-hidden="true">
-          <svg class="ico-on" viewBox="0 0 24 24">
-            <path class="fl" d="M9.8 9.4a2.3 2.3 0 0 1 4.6-.2c0 1.6-1 1.9-1 3.1a1.8 1.8 0 0 1-3.5.7 1.9 1.9 0 0 1-.1-3.6Z"/>
-            <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
-            <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
-          </svg>
-          <svg class="ico-off" viewBox="0 0 24 24">
-            <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
-            <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
-            <path class="st" d="M4.8 20.2 19.2 3.8"/>
-          </svg>
-        </span>
-        <span id="micLabel">Mute ear</span>
+      <button id="mic" class="round" aria-pressed="true" aria-label="Mute microphone"
+              title="Mute microphone" disabled>
+        <svg class="ico-on" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="st" d="M12 3.9a2.9 2.9 0 0 1 2.9 2.9v5a2.9 2.9 0 0 1-5.8 0v-5A2.9 2.9 0 0 1 12 3.9Z"/>
+          <path class="st" d="M5.9 11.2a6.1 6.1 0 0 0 12.2 0"/>
+          <path class="st" d="M12 17.3v3"/>
+        </svg>
+        <svg class="ico-off" viewBox="0 0 24 24" aria-hidden="true">
+          <path class="st" d="M12 3.9a2.9 2.9 0 0 1 2.9 2.9v5a2.9 2.9 0 0 1-4.4 2.5"/>
+          <path class="st" d="M5.9 11.2a6.1 6.1 0 0 0 9.2 5.2"/>
+          <path class="st" d="M12 17.3v3"/>
+          <path class="st slash" d="M4.7 4 19.3 20"/>
+        </svg>
       </button>
       <button id="end" class="ghost" disabled>End · written summary</button>
     </div>
