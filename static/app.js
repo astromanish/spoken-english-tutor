@@ -807,14 +807,12 @@ async function toggleEar() {
 
   if (muted) {
     watcher.reset();
-    if (playing || audioQueue.length) {
-      audioQueue.length = 0;
-      playing = false;
-      speaking = false;
-      stopPlayback();
-    }
+    // Muting closes the ear and nothing else. Her sentence is not the microphone:
+    // killing the queue here made "mute me" feel like "stop the lesson", and the
+    // learner loses the correction he was being given.
     await stopEar(); // track stopped: the OS mic indicator goes out
-    setState('muted');
+    if (playing || speaking) paintState();   // she is still talking; say so
+    else setState('muted');
   } else {
     const open = await startEar();
     if (open) setState('listening');
