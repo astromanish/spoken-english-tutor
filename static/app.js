@@ -28,7 +28,6 @@ const els = {
   capTutor: $('capTutor'),
   mic: $('mic'),
   end: $('end'),
-  player: $('player'),
   metric: $('metric'),
   summaryCard: $('summaryCard'),
   summary: $('summary'),
@@ -45,7 +44,6 @@ const MIN_SPEECH_MS = 350; // shorter than this is a cough, not a sentence
 const GATE_BASE = 0.018;  // RMS floor for "someone is talking"
 const GATE_SPEAKING = 0.05; // higher while she is talking: that is barge-in
 const NOISE_EMA = 0.05;   // room-noise tracker
-const SILENCE_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=';
 
 /* The turn-taking rule itself lives in vad.js — DOM-free, and tested in node:
  * quiet for SILENCE_MS after speech ends the utterance. */
@@ -271,9 +269,111 @@ async function postJson(url, body) {
   return data;
 }
 
-/* ── the mouth: her voice, queued and interruptible ─────────────────────── */
+/* ── the mouth: her voice, streamed and interruptible ───────────────────────
+ *
+ * /speak returns raw linear16 PCM chunked straight from Bulbul, so the first
+ * 30-60 ms of sound arrives ~0.4 s after the turn instead of after a finished
+ * file. Each chunk becomes an AudioBuffer scheduled hard against the previous
+ * one, which is gapless by construction, needs no codec, and makes barge-in a
+ * matter of stopping the sources that are queued in the graph.
+ */
 
-function pump() {
+const playback = {
+  ctx: null,
+  cursor: 0,      // when the next buffer should start
+  sources: [],    // scheduled but not finished — the barge-in kill list
+  abort: null,    // cancels the fetch that is feeding the scheduler
+};
+
+function playbackContext() {
+  if (!playback.ctx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    playback.ctx = new Ctx();
+  }
+  playback.ctx.resume().catch(() => {});
+  return playback.ctx;
+}
+
+function stopPlayback() {
+  if (playback.abort) {
+    try { playback.abort.abort(); } catch (e) { /* already done */ }
+    playback.abort = null;
+  }
+  for (const src of playback.sources) {
+    try { src.stop(); } catch (e) { /* already stopped */ }
+  }
+  playback.sources = [];
+  if (playback.ctx) playback.cursor = playback.ctx.currentTime;
+}
+
+function schedule(samples, rate, when) {
+  const ctx = playbackContext();
+  const buffer = ctx.createBuffer(1, samples.length, rate);
+  buffer.copyToChannel(samples, 0);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(ctx.destination);
+  const at = Math.max(when, ctx.currentTime + 0.02);
+  src.start(at);
+  playback.sources.push(src);
+  src.onended = () => {
+    playback.sources = playback.sources.filter((s) => s !== src);
+  };
+  return at + buffer.duration;
+}
+
+/** A whole file (the REST fallback) still goes through the same scheduler. */
+async function playFile(blob) {
+  const ctx = playbackContext();
+  const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
+  const samples = decoded.getChannelData(0);
+  playback.cursor = Math.max(playback.cursor, ctx.currentTime + 0.06);
+  playback.cursor = schedule(samples, decoded.sampleRate, playback.cursor);
+  await new Promise((r) => setTimeout(r, Math.max(0, (playback.cursor - ctx.currentTime) * 1000) + 60));
+}
+
+/** Stream one message into the audio graph and resolve when it has been heard. */
+async function playStream(url) {
+  const ctx = playbackContext();
+  playback.abort = new AbortController();
+  const res = await fetch(url, { signal: playback.abort.signal });
+  if (!res.ok) throw new Error(`audio ${res.status}`);
+
+  if ((res.headers.get('Content-Type') || '').startsWith('audio/wav')) {
+    return playFile(await res.blob());        // REST fallback
+  }
+
+  const rate = Number(res.headers.get('X-Sample-Rate') || STT_RATE);
+  const reader = res.body.getReader();
+  let carry = new Uint8Array(0);
+  playback.cursor = Math.max(playback.cursor, ctx.currentTime + 0.06);
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    let bytes = value;
+    if (carry.length) {                       // stitch a sample split across reads
+      const joined = new Uint8Array(carry.length + bytes.length);
+      joined.set(carry); joined.set(bytes, carry.length);
+      bytes = joined; carry = new Uint8Array(0);
+    }
+    if (bytes.length & 1) {
+      carry = bytes.slice(-1);
+      bytes = bytes.slice(0, -1);
+    }
+    if (!bytes.length) continue;
+
+    const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, bytes.length >> 1);
+    const samples = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i] / 32768;
+    playback.cursor = schedule(samples, rate, playback.cursor);
+  }
+
+  const left = Math.max(0, (playback.cursor - ctx.currentTime) * 1000);
+  await new Promise((r) => setTimeout(r, left + 60));
+}
+
+async function pump() {
   if (playing) return;
   const url = audioQueue.shift();
   if (!url) {
@@ -286,12 +386,17 @@ function pump() {
   playing = true;
   speaking = true;
   setState('speaking');
-  els.player.src = url;
-  els.player.play().catch(() => {
-    playing = false;
-    speaking = false;
-    pump();
-  });
+  try {
+    await playStream(url);
+  } catch (e) {
+    if (e.name !== 'AbortError') setStatus(`⚠️ ${e.message}`, true);
+  }
+  playing = false;
+  if (audioQueue.length) return pump();
+  speaking = false;
+  if (stateName === 'hearing') return paintState();
+  if (started) setState(muted ? 'muted' : 'listening');
+  else paintState();
 }
 
 function enqueueAudio(url) {
@@ -306,34 +411,12 @@ function enqueueAudio(url) {
   pump();
 }
 
-els.player.addEventListener('ended', () => {
-  playing = false;
-  if (audioQueue.length) {
-    pump();
-    return;
-  }
-  speaking = false;
-  // he cut her off and is talking: stay on "hearing", do not fall back to
-  // "listening" the instant her file stops
-  if (stateName === 'hearing') {
-    paintState();
-    return;
-  }
-  if (started) setState(muted ? 'muted' : 'listening');
-  else paintState();
-});
-
 /** The learner talked over her: cut the voice, keep the ear. */
 function bargeIn() {
   audioQueue.length = 0;
   playing = false;
   speaking = false;
-  try {
-    els.player.pause();
-    els.player.currentTime = 0;
-  } catch (e) {
-    /* nothing playing after all */
-  }
+  stopPlayback();
   setState('hearing');
 }
 
@@ -599,14 +682,9 @@ function reportWarning(data) {
 /* ── session ────────────────────────────────────────────────────────────── */
 
 function unlockAudio() {
-  // A press is the only gesture we get; spend it so her first sentence (queued
-  // seconds later) is not blocked by the autoplay policy.
-  try {
-    els.player.src = SILENCE_WAV;
-    els.player.play().catch(() => {});
-  } catch (e) {
-    /* nothing to unlock */
-  }
+  // A press is the only gesture we get; spend it resuming the audio graph so her
+  // first sentence (queued milliseconds later) is not blocked by autoplay rules.
+  try { playbackContext().resume(); } catch (e) { /* nothing to unlock */ }
 }
 
 const VOICE_KEY = 'priyanka.voice';
@@ -652,11 +730,12 @@ async function previewVoice() {
   try {
     const data = await postJson('/api/preview', { speaker });
     if (data.audio) {
-      audioQueue.length = 0;
-      els.player.src = data.audio;
-      els.player.play().catch(() => setStatus('⚠️ Tap anywhere, then press Hear her again', true));
+      stopPlayback();
+      playback.cursor = 0;
       const chosen = els.voice.selectedOptions[0];
       setStatus(`Sample playing · ${chosen ? chosen.text : data.speaker}`);
+      await playStream(data.audio);
+      setStatus('Ear and mouth ready');
     }
   } catch (e) {
     setStatus(`⚠️ Preview failed: ${e.message}`, true);
@@ -732,7 +811,7 @@ async function toggleEar() {
       audioQueue.length = 0;
       playing = false;
       speaking = false;
-      try { els.player.pause(); } catch (e) { /* not playing */ }
+      stopPlayback();
     }
     await stopEar(); // track stopped: the OS mic indicator goes out
     setState('muted');
@@ -751,7 +830,7 @@ async function endSession() {
     audioQueue.length = 0;
     playing = false;
     speaking = false;
-    try { els.player.pause(); } catch (e) { /* not playing */ }
+    stopPlayback();
     muted = true;
     turns.reset();
     heldReply = null;

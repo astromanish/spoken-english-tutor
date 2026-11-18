@@ -97,10 +97,12 @@ mistakes you made, the corrected English for each, and three things to practise.
 class Turn:
     heard: str            # what STT heard
     spoken_text: str      # first message (markers stripped) — the correction
-    audio_path: str       # first message audio
+    audio_path: str       # first message audio ("" when the caller will stream it)
     level: int
     followup_text: str = ""     # second message — the question, asked after
     followup_audio: str = ""    # second message audio ("" when not split)
+    segments: list[tuple[str, str]] = field(default_factory=list)          # what to speak
+    followup_segments: list[tuple[str, str]] = field(default_factory=list)
     ms_stt: int = 0
     ms_llm: int = 0
     ms_tts: int = 0
@@ -137,13 +139,18 @@ class Tutor:
 
     # ── one learner turn: audio → STT → LLM → TTS ────────────────────────
     def turn(self, audio_path: str | None = None, text: str | None = None,
-             stt_ms: int = 0, replace_previous: bool = False) -> Turn:
+             stt_ms: int = 0, replace_previous: bool = False,
+             synthesise: bool = True) -> Turn:
         """One learner turn. Text comes either from audio (STT here) or from the
         UI, which may pass `stt_ms` measured while it streamed the transcript.
 
         `replace_previous` means the learner was still talking when the last
         reply was ready: that exchange was half a sentence, so it is dropped and
         this turn — the whole sentence — takes its place.
+
+        `synthesise=False` skips TTS and only reports the segments, which is what
+        the web UI wants: it streams them itself so speech starts in ~0.4 s
+        instead of waiting for a finished file.
         """
         if replace_previous:
             self._drop_last_exchange()
@@ -178,6 +185,12 @@ class Tutor:
         if new_level != self.level:
             self.level = new_level
 
+        if not synthesise:
+            return Turn(heard=heard, spoken_text=spoken, audio_path="",
+                        level=self.level, followup_text=spoken2,
+                        segments=segments, followup_segments=seg2,
+                        ms_stt=ms_stt, ms_llm=ms_llm, ms_tts=0)
+
         t2 = time.time()
         if seg2:
             # synthesise both messages together: the turn costs the slower of
@@ -192,7 +205,8 @@ class Tutor:
 
         return Turn(heard=heard, spoken_text=spoken, audio_path=audio_out,
                     level=self.level, followup_text=spoken2,
-                    followup_audio=audio2, ms_stt=ms_stt, ms_llm=ms_llm,
+                    followup_audio=audio2, segments=segments,
+                    followup_segments=seg2, ms_stt=ms_stt, ms_llm=ms_llm,
                     ms_tts=ms_tts)
 
     def _drop_last_exchange(self) -> None:

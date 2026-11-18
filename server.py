@@ -55,6 +55,14 @@ _audio: dict[str, bytes] = {}
 _audio_order: list[str] = []
 MAX_AUDIO = 30
 
+# Speech queued for streaming: a token → the segments to speak in one message.
+# The browser points <audio> at /speak/<token>, so Bulbul's first MP3 frame
+# reaches it ~0.4 s after the turn instead of after a finished WAV file.
+_speech: dict[str, dict] = {}
+_speech_order: list[str] = []
+MAX_SPEECH = 60
+STREAM_TTS = os.environ.get("TUTOR_STREAM_TTS", "1") != "0"
+
 # Live-transcription sessions, one per microphone recording.
 _streams: dict[str, "realtime.StreamSession"] = {}
 MAX_STREAMS = 4
@@ -70,6 +78,18 @@ def _unlink(path: str | None) -> None:
         pass
 
 
+def remember_speech(segments: list[tuple[str, str]], speaker: str) -> str:
+    """Queue one message's segments for streaming; returns the token."""
+    if not segments:
+        return ""
+    token = uuid.uuid4().hex
+    _speech[token] = {"segments": segments, "speaker": speaker}
+    _speech_order.append(token)
+    while len(_speech_order) > MAX_SPEECH:
+        _speech.pop(_speech_order.pop(0), None)
+    return token
+
+
 def remember_audio(data: bytes) -> str:
     token = uuid.uuid4().hex
     _audio[token] = data
@@ -80,7 +100,8 @@ def remember_audio(data: bytes) -> str:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "TutorHTTP/1.0"
+    server_version = "TutorHTTP/1.1"
+    protocol_version = "HTTP/1.1"   # chunked streaming for /speak
 
     # Each browser gets its own tutor: a shared link must not put two visitors in
     # the same conversation.
@@ -114,6 +135,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(os.path.join(STATIC, path[len("/static/"):]))
         if path.startswith("/audio/"):
             return self._audio_file(path[len("/audio/"):])
+        if path.startswith("/speak/"):
+            return self._speak(path[len("/speak/"):])
         if path == "/api/version":
             # what is actually running — Render sets RENDER_GIT_COMMIT
             return self._json({
@@ -133,6 +156,11 @@ class Handler(BaseHTTPRequestHandler):
     # ── POST ──────────────────────────────────────────────────────────────
     def do_POST(self):
         self._cookie_sid()
+        self._raw = None
+        try:
+            self._body()          # always consumed, whatever the route decides
+        except Exception:
+            self.close_connection = True
         path = self.path.split("?")[0]
         try:
             if path == "/api/session":
@@ -168,17 +196,13 @@ class Handler(BaseHTTPRequestHandler):
             while len(_sessions) > MAX_SESSIONS:      # never grows unbounded
                 _sessions.pop(next(iter(_sessions)), None)
 
-            # The first message is spoken, not printed: it is synthesised here
-            # so the browser can start the ear and the mouth in the same beat.
+            # The first message is spoken, not printed. It is only *queued* here:
+            # the browser streams it, so the session returns in LLM time instead of
+            # waiting for the whole greeting to be synthesised.
             greeting_audio, warning = "", ""
             try:
-                path = sarvam.speak_mixed(tutor.greeting_segments, tutor.speaker)
-                try:
-                    with open(path, "rb") as f:
-                        token = remember_audio(f.read())
-                finally:
-                    _unlink(path)
-                greeting_audio = f"/audio/{token}.wav"
+                token = remember_speech(tutor.greeting_segments, tutor.speaker)
+                greeting_audio = f"/speak/{token}" if token else ""
             except Exception as e:  # the session still runs, just silently
                 warning = f"Greeting could not be spoken: {type(e).__name__}: {e}"
 
@@ -228,16 +252,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "Press Start first."},
                                   HTTPStatus.CONFLICT)
             turn = tutor.turn(audio_path=audio_path, text=text, stt_ms=stt_ms,
-                              replace_previous=replace)
+                              replace_previous=replace, synthesise=not STREAM_TTS)
             # one line per turn, so a merge is visible while testing
             print(f"[turn] replace={replace} heard={turn.heard[:80]!r}", flush=True)
             try:
-                with open(turn.audio_path, "rb") as f:
-                    token = remember_audio(f.read())
-                token2 = ""
-                if turn.followup_audio:      # the question, asked separately
-                    with open(turn.followup_audio, "rb") as f:
-                        token2 = remember_audio(f.read())
+                if STREAM_TTS:
+                    audio_url = f"/speak/{remember_speech(turn.segments, tutor.speaker)}"
+                    audio2_url = (f"/speak/{remember_speech(turn.followup_segments, tutor.speaker)}"
+                                  if turn.followup_segments else "")
+                else:
+                    with open(turn.audio_path, "rb") as f:
+                        audio_url = f"/audio/{remember_audio(f.read())}.wav"
+                    audio2_url = ""
+                    if turn.followup_audio:
+                        with open(turn.followup_audio, "rb") as f:
+                            audio2_url = f"/audio/{remember_audio(f.read())}.wav"
             finally:
                 _unlink(audio_path)          # the recording — held in memory now
                 _unlink(turn.audio_path)     # the reply WAV — read above
@@ -249,8 +278,8 @@ class Handler(BaseHTTPRequestHandler):
                 "level": turn.level,
                 "level_name": LEVELS.get(turn.level, "?"),
                 "awaiting_confidence": tutor.awaiting_confidence,
-                "audio": f"/audio/{token}.wav",
-                "audio2": f"/audio/{token2}.wav" if token2 else "",
+                "audio": audio_url,
+                "audio2": audio2_url,
                 "timings": {
                     "stt": turn.ms_stt,
                     "llm": turn.ms_llm,
@@ -273,17 +302,12 @@ class Handler(BaseHTTPRequestHandler):
             ("en-IN", f"Hi, I am {name}, and I will help you speak English."),
             ("en-IN", self.PREVIEW_HINGLISH),
         ]
-        path = sarvam.speak_mixed(segments, speaker)
-        try:
-            with open(path, "rb") as f:
-                token = remember_audio(f.read())
-        finally:
-            _unlink(path)
+        token = remember_speech(segments, speaker)
         self._json({
             "speaker": speaker,
             "name": name,
             "text": " ".join(text for _, text in segments),
-            "audio": f"/audio/{token}.wav",
+            "audio": f"/speak/{token}",
         })
 
     def _summary(self):
@@ -336,8 +360,16 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── plumbing ──────────────────────────────────────────────────────────
     def _body(self) -> bytes:
-        length = int(self.headers.get("Content-Length") or 0)
-        return self.rfile.read(length) if length else b""
+        """The request body, read at most once.
+
+        Every POST is drained the moment it arrives: bytes left on a keep-alive
+        socket become the next request line, and a 400 KB PCM upload read as a
+        request line is exactly how /speak started answering 501.
+        """
+        if getattr(self, "_raw", None) is None:
+            length = int(self.headers.get("Content-Length") or 0)
+            self._raw = self.rfile.read(length) if length else b""
+        return self._raw
 
     def _body_json(self) -> dict:
         raw = self._body()
@@ -367,6 +399,102 @@ class Handler(BaseHTTPRequestHandler):
         if ctype.startswith("text/") or ctype in ("application/javascript", "text/javascript"):
             ctype += "; charset=utf-8"
         self._send_bytes(open(real, "rb").read(), ctype)
+
+    def _speak(self, token: str):
+        """Stream one message as MP3, chunked, straight from Bulbul.
+
+        The first frame is fetched *before* the headers so a dead websocket can
+        still fall back to the REST file and send a normal WAV; once bytes exist
+        we commit to `audio/mpeg` and chunk them out as they arrive, which is what
+        lets the browser start speaking ~0.4 s in.
+        """
+        token = token.split(".")[0]
+        with _lock:
+            entry = _speech.pop(token, None)      # single use
+        if entry is None:
+            return self.send_error(HTTPStatus.NOT_FOUND)
+
+        segments = [(lang, text) for lang, text in entry["segments"] if text.strip()]
+        speaker = entry["speaker"]
+        if not segments:
+            return self.send_error(HTTPStatus.NO_CONTENT)
+
+        # ── first bytes decide the format ────────────────────────────────────
+        stream = None
+        try:
+            stream = sarvam.speech_stream(segments[0][1], segments[0][0], speaker)
+            head = next(stream)
+        except (StopIteration, Exception) as e:
+            if stream is not None and not isinstance(e, StopIteration):
+                print(f"[speak] stream unavailable, REST fallback: {e}", flush=True)
+            stream = None
+            head = b""
+
+        if not head:
+            # nothing came out of the websocket: speak it the old way, but do not
+            # leave the learner in silence
+            try:
+                path = sarvam.speak_mixed(segments, speaker)
+                try:
+                    with open(path, "rb") as f:
+                        data = f.read()
+                finally:
+                    _unlink(path)
+            except Exception as e:
+                return self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                       explain=str(e)[:120])
+            return self._send_bytes(data, "audio/wav")
+
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "audio/pcm")
+        self.send_header("X-Sample-Rate", str(sarvam.TTS_SAMPLE_RATE))
+        self.send_header("X-Channels", "1")
+        self.send_header("X-Sample-Format", "s16le")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")   # never reuse a half-written stream
+        self.send_header("Accept-Ranges", "none")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+        self.close_connection = True
+
+        written = [0]
+        t_start = time.time()
+
+        def emit(chunk: bytes) -> None:
+            # A dead peer must stop us here and now: a half-written chunk left on
+            # this fd once leaked into the *next* request line and produced 501s.
+            try:
+                self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                self.close_connection = True
+                try:
+                    self.connection.close()
+                except OSError:
+                    pass
+                raise
+            written[0] += len(chunk)
+
+        try:
+            emit(head)
+            for chunk in stream:
+                emit(chunk)
+            for language, text in segments[1:]:
+                for chunk in sarvam.speech_stream(text, language, speaker):
+                    emit(chunk)
+            print(f"[speak] done {written[0]} bytes in {time.time()-t_start:.2f}s", flush=True)
+            self.wfile.write(b"0\r\n\r\n")      # end of chunked body
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True           # the browser stopped listening
+        except Exception as e:
+            print(f"[speak] stream cut short: {type(e).__name__}", flush=True)
+            self.close_connection = True
+        finally:
+            try:
+                self.connection.close()
+            except OSError:
+                pass
 
     def _audio_file(self, name: str):
         token = name.split(".")[0]

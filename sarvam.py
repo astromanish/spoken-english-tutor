@@ -8,6 +8,7 @@ OpenAI-compatible chat endpoint.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import shutil
 import subprocess
@@ -30,6 +31,19 @@ STT_MODE = "codemix"
 TTS_MODEL = "bulbul:v3"
 TTS_SPEAKER = "shreya"   # bulbul:v3 default for this app
 TTS_SAMPLE_RATE = 16000  # narrower than Bulbul's 22050 default: smaller, faster
+
+# Streaming TTS. Measured from this machine: first audio arrives in 370-800 ms,
+# while the REST endpoint needs 2.2-3.3 s before it returns a single byte — and
+# the learner waits for all of it. Bulbul streams MP3, which a browser plays
+# progressively, so the client just points <audio> at our stream and sound
+# starts as soon as the first frame lands.
+TTS_STREAM_URL = "wss://api.sarvam.ai/text-to-speech/ws"
+STREAM_IDLE_S = 0.9   # no "end" event exists: silence this long means done
+
+# Raw linear16 PCM instead of MP3: Web Audio can schedule PCM buffers directly, so
+# playback needs no codec at all (Chromium builds ship without MP3) and barge-in is
+# a matter of stopping the scheduled sources.
+STREAM_CODEC = "linear16"
 
 # bulbul:v3 ships 37 voices. The picker offers five of them, chosen to span the
 # range and described by character instead of by name — the tutor is Priyanka, so
@@ -244,6 +258,53 @@ def chat(messages: list[dict], temperature: float = 0.4, max_tokens: int = 700) 
 
 
 # ── TTS: Sarvam Bulbul v3 ─────────────────────────────────────────────────
+
+def speech_stream(text: str, language_code: str = "en-IN",
+                  speaker: str = TTS_SPEAKER, idle: float = STREAM_IDLE_S,
+                  codec: str = STREAM_CODEC):
+    """Yield MP3 chunks for `text` as Bulbul produces them.
+
+    Blocking generator, meant to be consumed from a request thread: it yields as
+    soon as a frame arrives, so the caller can forward it to the browser without
+    waiting for the whole sentence. The websocket emits no reliable 'end' event,
+    so `idle` seconds of silence ends it.
+    """
+    from websockets.sync.client import connect   # local import: only this path needs it
+
+    payload = {"type": "config", "data": {
+        "model": TTS_MODEL, "speaker": speaker_or_default(speaker),
+        "target_language_code": language_code,
+        "speech_sample_rate": TTS_SAMPLE_RATE,
+        "output_audio_codec": codec,
+    }}
+    with connect(TTS_STREAM_URL,
+                 additional_headers={"api-subscription-key": api_key()},
+                 max_size=2 ** 23, open_timeout=20) as ws:
+        ws.send(json.dumps(payload))
+        ws.send(json.dumps({"type": "text", "data": {"text": text}}))
+        ws.send(json.dumps({"type": "flush", "data": {}}))
+        while True:
+            try:
+                frame = ws.recv(timeout=idle)
+            except TimeoutError:
+                return
+            if isinstance(frame, bytes):
+                yield frame
+                continue
+            try:
+                event = json.loads(frame)
+            except ValueError:
+                continue
+            kind = event.get("type") or ""
+            if kind == "audio":
+                audio = (event.get("data") or {}).get("audio")
+                if audio:
+                    yield base64.b64decode(audio)
+            elif kind == "error":
+                raise RuntimeError(f"Sarvam TTS stream: {event.get('data') or event}")
+            elif kind in ("end", "complete", "flushed"):
+                return
+
 
 def _speak_once(text: str, language_code: str,
                 speaker: str = TTS_SPEAKER) -> bytes:
