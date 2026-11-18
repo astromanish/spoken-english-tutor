@@ -25,8 +25,9 @@ import realtime
 import sarvam
 from tutor import LEVELS, TOPICS, Tutor
 
-HOST = os.environ.get("TUTOR_HOST", "127.0.0.1")
-PORT = int(os.environ.get("TUTOR_PORT", "7860"))
+# Render/Fly/Railway hand you $PORT and expect 0.0.0.0; locally it stays loopback.
+PORT = int(os.environ.get("PORT") or os.environ.get("TUTOR_PORT") or "7860")
+HOST = os.environ.get("TUTOR_HOST", "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
@@ -40,9 +41,13 @@ AUDIO_SUFFIX = {
     "audio/x-wav": ".wav",
 }
 
-# One learner at a time: the session lives in memory behind a lock.
+# Sessions live in memory, one per browser (cookie), behind a lock. In memory is
+# fine for a single-process host: the tutor's conversation and its audio die with
+# the process, which is exactly what a role-play session wants.
 _lock = threading.Lock()
-_state: dict[str, Tutor | None] = {"tutor": None}
+_sessions: dict[str, Tutor] = {}
+MAX_SESSIONS = 200
+COOKIE = "priyanka_sid"
 _audio: dict[str, bytes] = {}
 _audio_order: list[str] = []
 MAX_AUDIO = 30
@@ -74,11 +79,31 @@ def remember_audio(data: bytes) -> str:
 class Handler(BaseHTTPRequestHandler):
     server_version = "TutorHTTP/1.0"
 
+    # Each browser gets its own tutor: a shared link must not put two visitors in
+    # the same conversation.
+    sid = ""
+    fresh_sid = False
+
+    def _cookie_sid(self) -> None:
+        raw = self.headers.get("Cookie") or ""
+        for part in raw.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == COOKIE and value:
+                self.sid = value
+                return
+        self.sid = uuid.uuid4().hex
+        self.fresh_sid = True
+
+    def _session(self) -> Tutor | None:
+        with _lock:
+            return _sessions.get(self.sid)
+
     def log_message(self, fmt, *args):  # keep the console readable
         pass
 
     # ── GET ───────────────────────────────────────────────────────────────
     def do_GET(self):
+        self._cookie_sid()
         path = self.path.split("?")[0]
         if path in ("/", "/index.html"):
             return self._file(os.path.join(STATIC, "index.html"))
@@ -96,6 +121,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── POST ──────────────────────────────────────────────────────────────
     def do_POST(self):
+        self._cookie_sid()
         path = self.path.split("?")[0]
         try:
             if path == "/api/session":
@@ -127,7 +153,9 @@ class Handler(BaseHTTPRequestHandler):
             # No level picker: the tutor asks his confidence in the first
             # message and sets the correction level from the answer.
             tutor = Tutor(topic=topic, speaker=speaker)
-            _state["tutor"] = tutor
+            _sessions[self.sid] = tutor
+            while len(_sessions) > MAX_SESSIONS:      # never grows unbounded
+                _sessions.pop(next(iter(_sessions)), None)
 
             # The first message is spoken, not printed: it is synthesised here
             # so the browser can start the ear and the mouth in the same beat.
@@ -184,7 +212,7 @@ class Handler(BaseHTTPRequestHandler):
                 f.write(raw)
 
         with _lock:
-            tutor = _state["tutor"]
+            tutor = _sessions.get(self.sid)
             if tutor is None:
                 return self._json({"error": "Press Start first."},
                                   HTTPStatus.CONFLICT)
@@ -240,7 +268,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _summary(self):
         with _lock:
-            tutor = _state["tutor"]
+            tutor = _sessions.get(self.sid)
             if tutor is None:
                 return self._json({"error": "No active session."},
                                   HTTPStatus.CONFLICT)
@@ -306,6 +334,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
+        if self.fresh_sid:
+            self.send_header("Set-Cookie", f"{COOKIE}={self.sid}; Path=/; SameSite=Lax")
         self.end_headers()
         self.wfile.write(data)
 
