@@ -81,13 +81,32 @@ let heldReply = null; // { token, data } — received, not played
 
 /* ── view ───────────────────────────────────────────────────────────────── */
 
+/* The tutor is a role: pick the mature male voice and it is a he. Every line of
+   stage copy that names the tutor goes through these pronouns. */
+const GENDERS = {};          // speaker id → "male" | "female", from /api/meta
+const PRONOUNS = {
+  female: { S: 'She', s: 'she', o: 'her', p: 'her' },
+  male: { S: 'He', s: 'he', o: 'him', p: 'his' },
+};
+
+function pronouns() {
+  const id = els.voice ? els.voice.value : '';
+  return PRONOUNS[GENDERS[id] === 'male' ? 'male' : 'female'];
+}
+
+function stateText(name) {
+  const t = STATE_TEXT[name] || '';
+  const P = pronouns();
+  return t.replace(/\{([Ssop])\}/g, (m, key) => P[key]);
+}
+
 const STATE_TEXT = {
   idle: '',
-  connecting: 'Connecting — she speaks first…',
+  connecting: 'Connecting — {s} speaks first…',
   listening: 'Mic on — speak whenever you like',
-  hearing: 'Hearing you — she takes the turn after a quarter second of quiet',
+  hearing: 'Hearing you — {s} takes the turn after a quarter second of quiet',
   thinking: 'Thinking…',
-  speaking: 'She is speaking — talk over her any time',
+  speaking: '{S} is speaking — talk over {o} any time',
   muted: 'Mic off — nothing is being recorded',
   ended: 'Session ended',
 };
@@ -118,7 +137,7 @@ function fail(detail, state = null) {
 function setState(name, text, warn = false) {
   stateName = name;
   els.orb.dataset.state = name;
-  setStatus(text || STATE_TEXT[name] || '', warn);
+  setStatus(text || stateText(name), warn);
   paintState();
 }
 
@@ -608,7 +627,7 @@ function onBlock(samples, rate) {
     } else if (action === 'supersede') {
       // she had not started answering yet: whatever he said before was half a
       // sentence, so her reply is held and his words carry into the next turn
-      setStatus('You kept going — she will answer the whole sentence');
+      setStatus(`You kept going — ${pronouns().s} will answer the whole sentence`);
     }
     setState('hearing');
   }
@@ -750,6 +769,7 @@ async function loadMeta() {
     els.voice.innerHTML = (meta.speakers || [])
       .map((sp) => {
         const label = sp.label || sp.id;
+        GENDERS[sp.id] = sp.gender || 'female';
         return `<option value="${escapeHtml(sp.id)}">${escapeHtml(label)}</option>`;
       })
       .join('');
