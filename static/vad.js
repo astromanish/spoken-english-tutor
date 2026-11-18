@@ -2,7 +2,7 @@
  *
  * The browser feeds it one RMS value per ~256 ms mic block; it answers with an
  * event: "speech-start" (the learner began talking — barge-in point) or
- * "turn-end" (they have been quiet for `silenceMs` — 500 ms here — so the
+ * "turn-end" (they have been quiet for `silenceMs` — 250 ms here — so the
  * turn is the tutor's). Everything else is room noise.
  *
  * Calibrated against Bulbul output: normal speech measures ~0.09 RMS, a quiet
@@ -15,7 +15,7 @@
   else root.TurnWatcher = api.TurnWatcher;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const DEFAULTS = {
-    silenceMs: 500, // quiet this long ends the turn
+    silenceMs: 250, // quiet this long ends the turn
     minSpeechMs: 350, // shorter than this is a cough, not a sentence
     gateBase: 0.018,
     gateSpeaking: 0.05, // higher while her voice is playing: barge-in only

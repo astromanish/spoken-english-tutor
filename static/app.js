@@ -3,7 +3,7 @@
  * No composer, no transcript log: the ear is open the whole session and the
  * mouth answers out loud. The browser does the turn-taking locally — it watches
  * the mic level, feeds 16 kHz PCM to the server's Sarvam stream while the
- * learner talks, and sends the turn once they have been quiet for 0.5 s.
+ * learner talks, and sends the turn once they have been quiet for 0.25 s.
  *
  *   GET  /api/meta                topics
  *   POST /api/session             → greeting text + spoken greeting WAV
@@ -39,7 +39,7 @@ const els = {
 
 const STT_RATE = 16000;   // Saaras realtime wants linear16 mono at 16 kHz
 const FLUSH_MS = 250;     // how much audio each upload carries
-const SILENCE_MS = 500;   // quiet this long and the turn is hers
+const SILENCE_MS = 250;   // quiet this long and the turn is hers
 const MIN_SPEECH_MS = 350; // shorter than this is a cough, not a sentence
 const GATE_BASE = 0.018;  // RMS floor for "someone is talking"
 const GATE_SPEAKING = 0.05; // higher while she is talking: that is barge-in
@@ -85,7 +85,7 @@ const STATE_TEXT = {
   idle: '',
   connecting: 'Connecting — she speaks first…',
   listening: 'Mic on — speak whenever you like',
-  hearing: 'Hearing you — she takes the turn after half a second of quiet',
+  hearing: 'Hearing you — she takes the turn after a quarter second of quiet',
   thinking: 'Thinking…',
   speaking: 'She is speaking — talk over her any time',
   muted: 'Mic off — nothing is being recorded',
@@ -550,7 +550,8 @@ async function startEar() {
   await ctx.resume().catch(() => {});
 
   const source = ctx.createMediaStreamSource(media);
-  const processor = ctx.createScriptProcessor(4096, 1, 1);
+  const processor = ctx.createScriptProcessor(2048, 1, 1); // 128 ms blocks:
+  // a 250 ms silence window is two of them, not one, so the clock is honest
   const sink = ctx.createGain();
   sink.gain.value = 0; // keeps the graph alive without echoing the mic
   processor.onaudioprocess = (e) => onBlock(e.inputBuffer.getChannelData(0), ctx.sampleRate);

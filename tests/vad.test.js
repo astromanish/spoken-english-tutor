@@ -23,7 +23,7 @@ function feed(w, rms, ms, t, speaking = false) {
   return { events, t };
 }
 
-test('half a second of quiet ends the turn', () => {
+test('a quarter second of quiet ends the turn', () => {
   const w = new TurnWatcher();
   let t = 0;
   let r = feed(w, SPEECH, 1024, t);
@@ -31,16 +31,16 @@ test('half a second of quiet ends the turn', () => {
   const speechEnd = r.t;
   const turn = r.events[0].t;
 
-  // one 256 ms block of quiet — not yet
-  r = feed(w, SILENCE, 256, r.t);
+  // one 128 ms block of quiet — not yet
+  r = feed(w, SILENCE, 128, r.t);
   assert.deepStrictEqual(r.events, []);
 
-  // crossing 500 ms of quiet — hers now
-  r = feed(w, SILENCE, 512, r.t);
+  // a second block crosses 250 ms — hers now
+  r = feed(w, SILENCE, 128, r.t);
   assert.strictEqual(r.events.length, 1);
   assert.strictEqual(r.events[0].ev, 'turn-end');
   const quietFor = r.events[0].t - speechEnd;
-  assert.ok(quietFor >= 500 && quietFor < 768, `quiet for ${quietFor} ms`);
+  assert.ok(quietFor >= 250 && quietFor < 384, `quiet for ${quietFor} ms`);
   assert.ok(speechEnd - turn >= 768, 'speech was long enough to count');
 });
 
@@ -64,14 +64,14 @@ test('speaking again resets the silence clock', () => {
   let t = 0;
   const a = feed(w, SPEECH, 512, t);
   t = a.t;
-  const b = feed(w, SILENCE, 256, t); // a pause, but under half a second
+  const b = feed(w, SILENCE, 128, t); // a pause, but under a quarter second
   t = b.t;
   const c = feed(w, SPEECH, 512, t); // he carries on mid-sentence
   t = c.t;
-  const d = feed(w, SILENCE, 256, t); // the final pause, still short
+  const d = feed(w, SILENCE, 128, t); // the final pause, still short
   assert.deepStrictEqual([...b.events, ...c.events, ...d.events], []);
 
-  const e = feed(w, SILENCE, 512, d.t);
+  const e = feed(w, SILENCE, 256, d.t);
   assert.strictEqual(e.events.length, 1);
   assert.strictEqual(e.events[0].ev, 'turn-end');
 });
@@ -93,5 +93,5 @@ test('reset clears a turn in progress', () => {
   w.reset();
   r = feed(w, SILENCE, 4000, r.t);
   assert.deepStrictEqual(r.events, []);
-  assert.strictEqual(DEFAULTS.silenceMs, 500);
+  assert.strictEqual(DEFAULTS.silenceMs, 250);
 });
