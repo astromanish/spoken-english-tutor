@@ -623,7 +623,6 @@ function unlockAudio() {
 }
 
 const VOICE_KEY = 'priyanka.voice';
-const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 async function loadMeta() {
   try {
@@ -637,10 +636,11 @@ async function loadMeta() {
       .map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`)
       .join('');
 
-    // one option per bulbul voice, with the provider's tone hint when there is one
+    // Five voices, described by character — not by speaker name: the tutor is
+    // Priyanka, so the picker chooses how she sounds, not who she is.
     els.voice.innerHTML = (meta.speakers || [])
       .map((sp) => {
-        const label = titleCase(sp.id) + (sp.tone ? ` · ${sp.tone}` : '');
+        const label = sp.label || sp.id;
         return `<option value="${escapeHtml(sp.id)}">${escapeHtml(label)}</option>`;
       })
       .join('');
@@ -668,7 +668,8 @@ async function previewVoice() {
       audioQueue.length = 0;
       els.player.src = data.audio;
       els.player.play().catch(() => setStatus('⚠️ Tap anywhere, then press Hear her again', true));
-      setStatus(`Sample playing · ${titleCase(data.speaker)}`);
+      const chosen = els.voice.selectedOptions[0];
+      setStatus(`Sample playing · ${chosen ? chosen.text : data.speaker}`);
     }
   } catch (e) {
     setStatus(`⚠️ Preview failed: ${e.message}`, true);

@@ -30,9 +30,9 @@ SESSION SETUP: you are told the topic the learner picked. You play the person wh
 - Travel and directions → the stranger he asks for directions (or the driver)
 - Shopping → the shopkeeper
 
-FIRST MESSAGE (before any role-play): greet him in one short English line, say in one line which role you are playing today, tell him you will fix his mistakes in Hinglish, then ask him ONE question: how confident is he speaking English right now — not confident at all, okay/medium, or confident? Wait for his answer. Do not start the role-play yet.
+FIRST MESSAGE (before any role-play): greet him in one short English line, say in one line which role you are playing today, tell him you will fix his mistakes in Hinglish, then ask him ONE question: how confident is he speaking English right now, on a scale of 1 to 5 (1 = not confident at all, 5 = fully confident)? Wait for his answer. Do not start the role-play yet.
 
-FROM HIS CONFIDENCE ANSWER: do not correct his sentence here — he is telling you how he feels, not practising. Set the level (LEVEL: line) — 1 = low confidence: correct almost every grammar and word-choice mistake and use short simple English; 2 = medium: correct real mistakes plus suggest better word choices; 3 = high: only naturalness, fluency and word choice. Then start the role-play by asking your first question on the topic, in English, as your character.
+FROM HIS CONFIDENCE ANSWER: do not correct his sentence here — he is telling you how he feels, not practising. He answers on a 1-5 scale; map it to the level you report on the LEVEL: line — 1 or 2 → LEVEL: 1 (correct almost every grammar and word-choice mistake, use short simple English); 3 → LEVEL: 2 (correct real mistakes and suggest better wording); 4 or 5 → LEVEL: 3 (only naturalness, fluency and word choice). Then start the role-play by asking your first question on the topic, in English, as your character.
 
 LANGUAGE RULES — the core of your job:
 0. Before replying, read his sentence once for grammar and word-choice mistakes. If it has any, correct them — even when he also asks a question. Never answer "good" to a sentence that contains a mistake.
@@ -82,6 +82,15 @@ Accuracy rules — do not break these:
 - Every English sentence and example must be correct, natural English. Never suggest an ungrammatical form, even as a warning.
 - If he made no mistakes in a category, say so in Hinglish.
 Nothing else."""
+
+
+# Nothing to summarise: the learner ended the session before his first sentence.
+# Asking the model here invites invented mistakes, so the answer is fixed.
+BLANK_SUMMARY = """_Session ended before you said anything, so there is nothing to correct yet._
+
+Start again and speak for two or three turns — this page will then list the
+mistakes you made, the corrected English for each, and three things to practise.
+"""
 
 
 @dataclass
@@ -198,6 +207,9 @@ class Tutor:
 
     # ── written session summary ──────────────────────────────────────────
     def summary(self) -> str:
+        spoken = [m for m in self.history[2:] if m["role"] == "user"]
+        if not spoken:
+            return BLANK_SUMMARY
         convo = "\n".join(
             f"{m['role']}: {m['content']}" for m in self.history[1:]
         )

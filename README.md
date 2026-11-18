@@ -24,7 +24,7 @@ Bulbul v3 (text-to-speech). No other model provider is involved.
 | 6 | Ends with a written summary: mistakes, corrections, 3 practice items | **End session** button |
 | 7 | Simple UI | vanilla JS (`static/`) on a stdlib server (`server.py`) |
 | + | A live voice agent, not a chat box | ears and mouth always on: `static/app.js` + `static/vad.js` |
-| + | Pick her voice from all 37 bulbul voices, with a preview | Voice select + `POST /api/preview` |
+| + | Five voices to choose from, with a preview | Voice select + `POST /api/preview` |
 | + | Turn ends after 2 s of silence, mic can be muted | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
 
 ## Run it
@@ -39,16 +39,18 @@ export SARVAM_API_KEY=...        # https://dashboard.sarvam.ai → API keys
 ```
 
 Press **Start** and her ear opens while her first line plays out loud: she
-introduces her character and asks how confident you are speaking English — that
-answer sets how much she corrects you. Then just talk. She answers out loud,
+introduces her character and asks how confident you are speaking English, on a
+scale of 1 to 5 — that answer sets how much she corrects you. Then just talk. She answers out loud,
 asks the next thing, and keeps going; **End** writes the summary.
 
-The **Voice** picker is every `bulbul:v3` speaker Sarvam offers — 37 of them, each
-labelled with the provider's own tone hint where there is one — and **Preview**
-speaks a two-line sample in that voice (one English line, one Hinglish line, so
-you hear both before committing). The choice is remembered in `localStorage` and
-travels with the session as a `speaker` field; an unknown one falls back to the
-default rather than failing the start.
+The **Voice** picker offers five of bulbul:v3's 37 speakers, described by
+character rather than by name — *Warm female · Calm female · Young female ·
+Professional male · Mature male* — because the tutor is Priyanka either way; the
+choice is how she sounds, not who she is. **Preview** speaks a two-line sample in
+that voice (one English line, one Hinglish line, so you hear both before
+committing). The pick is remembered in `localStorage` and travels with the
+session as a `speaker` field; an unknown or retired one falls back to the default
+rather than failing the start.
 
 There is no text box and no transcript log. The ear stays open the whole
 session, including while she is speaking — if you talk over her she stops
@@ -153,11 +155,12 @@ English+Hinglish reply costs about its slowest segment instead of the sum, and o
 slow call is retried rather than stalling the turn.
 
 **Level starts with a confidence question, not a dropdown.** The setup has no
-level picker: the first message asks how confident he is speaking English, his
-answer sets how hard the tutor comes down on grammar and word choice (1 = almost
-every mistake, 2 = real mistakes plus better wording, 3 = fluency only), and the
-tutor re-judges it every turn — reported on a `LEVEL:` line the parser reads
-back for the badge.
+level picker: the first message asks him to rate his English confidence **1 to 5**
+(1 = not confident at all, 5 = fully confident). That answer maps onto how hard
+the tutor comes down on him — 1–2 → almost every mistake in short simple English,
+3 → real mistakes plus better wording, 4–5 → naturalness and word choice only —
+and the tutor re-judges it every turn, reported on a `LEVEL:` line the parser
+reads back for the badge.
 
 **The live transcript is the turn.** While the mic is open the page sends
 250 ms of 16 kHz PCM to `POST /api/stream/<id>/audio`; `realtime.py` holds one
@@ -176,6 +179,9 @@ the stream instead.
 
 **Summary comes from the transcript.** Ending the session replays the whole
 conversation to the model with a fixed summarisation prompt — no state to drift.
+With **zero learner turns** the model is not called at all: there is nothing to
+correct, and a model asked to summarise a one-sided conversation invents
+mistakes. That case returns a fixed, honest blank state instead.
 
 **Transcripts are kept as spoken.** Saaras returns Hinglish in Devanagari
 (`transcribe` mode), which is what the learner actually said; nothing is

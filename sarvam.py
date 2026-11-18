@@ -30,47 +30,15 @@ STT_MODE = "codemix"
 TTS_MODEL = "bulbul:v3"
 TTS_SPEAKER = "shreya"   # bulbul:v3 default for this app
 
-# Every bulbul:v3 voice, in the provider's own list. `tone` is Sarvam's hint
-# where they give one; the rest are named but unlabelled. A different speaker
-# changes nothing else about a turn — same text, same language routing.
+# bulbul:v3 ships 37 voices. The picker offers five of them, chosen to span the
+# range and described by character instead of by name — the tutor is Priyanka, so
+# each option is a voice she can wear, not a different person.
 SPEAKERS: list[dict] = [
-    {"id": "priya", "tone": "warm, friendly"},
-    {"id": "neha", "tone": "warm, conversational"},
-    {"id": "pooja", "tone": "warm, friendly"},
-    {"id": "shreya", "tone": "calm, narration"},
-    {"id": "kavya", "tone": "calm, professional"},
-    {"id": "ritu", "tone": "calm, professional"},
-    {"id": "tanya", "tone": "young, energetic"},
-    {"id": "suhani", "tone": "young, energetic"},
-    {"id": "aditya", "tone": "professional, news-anchor"},
-    {"id": "rahul", "tone": "professional, conversational"},
-    {"id": "kabir", "tone": "professional, warm"},
-    {"id": "anand", "tone": "mature, professional"},
-    {"id": "vijay", "tone": "mature, authoritative"},
-    {"id": "gokul", "tone": "mature, narration"},
-    {"id": "shubh", "tone": "provider default"},
-    {"id": "advait", "tone": ""},
-    {"id": "amit", "tone": ""},
-    {"id": "ashutosh", "tone": ""},
-    {"id": "aayan", "tone": ""},
-    {"id": "dev", "tone": ""},
-    {"id": "ishita", "tone": ""},
-    {"id": "kavitha", "tone": ""},
-    {"id": "mani", "tone": ""},
-    {"id": "manan", "tone": ""},
-    {"id": "mohit", "tone": ""},
-    {"id": "ratan", "tone": ""},
-    {"id": "rehan", "tone": ""},
-    {"id": "rohan", "tone": ""},
-    {"id": "roopa", "tone": ""},
-    {"id": "rupali", "tone": ""},
-    {"id": "simran", "tone": ""},
-    {"id": "shruti", "tone": ""},
-    {"id": "soham", "tone": ""},
-    {"id": "sumit", "tone": ""},
-    {"id": "sunny", "tone": ""},
-    {"id": "tarun", "tone": ""},
-    {"id": "varun", "tone": ""},
+    {"id": "priya", "label": "Warm female"},
+    {"id": "shreya", "label": "Calm female"},
+    {"id": "tanya", "label": "Young female"},
+    {"id": "rahul", "label": "Professional male"},
+    {"id": "vijay", "label": "Mature male"},
 ]
 SPEAKER_IDS = {sp["id"] for sp in SPEAKERS}
 
