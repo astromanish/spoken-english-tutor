@@ -1,29 +1,29 @@
 # Evaluation results
 
-**7/9 handled correctly.** Average response time **6.2s** (STT 2.2s · LLM 1.3s · TTS 2.7s) on this machine.
+**8/9 handled correctly.** Average response time **5.2s** (STT 0.7s · LLM 0.6s · TTS 3.8s) on this machine.
 
 Models: STT `saaras:v3` · chat `sarvam-105b-conversations` · TTS `bulbul:v3`.
 
 | # | Learner said | What the tutor did | Verdict | Time |
 |---|---|---|---|---|
-| 1 | Mujhe English bolne mein thoda confidence nahi hai, beginner level par hoon. | I understand. We will start with simple questions. Tell me, why do you want this job? 'बिगिनर लेवल पर हूँ' की जगह 'I am a begin… | ✅ PASS | 3.9s |
-| 2 | He go to school daily. | That is not quite an answer to my question. You should say, "I am looking for a good opportunity to grow." Why do you want this… | ❌ FAIL | 4.1s |
-| 3 | I am agree with you. | I appreciate that. You should say, "I agree with you." What skills do you have that make you a good fit for this role? 'I am ag… | ✅ PASS | 23.5s |
-| 4 | Yesterday I go to office and I am explain everything to my manager. | That is a good example. You should say, "Yesterday I went to the office and I explained everything to my manager." What challen… | ✅ PASS | 5.2s |
-| 5 | mujhe samajh nahi aaya, aap phir se bolo | You can say, "Please say that again." What part was difficult? अगर समझ नहीं आया तो आप बोल सकते हैं, "Please repeat that" या "Co… | ✅ PASS | 3.6s |
-| 6 | She don't know nothing about the job. | I think you mean to say, "She does not know anything about the job." What makes you the right person for this position? 'do' की… | ✅ PASS | 3.5s |
-| 7 | Main bahut nervous hoon, interview mein kya bolun? | You can simply say, "I am a little nervous, but I am ready to learn." What are your strengths? इंटरव्यू में घबराना normal है, आ… | ✅ PASS | 3.8s |
-| 8 | I am working in company from two years. | That is good experience. You should say, "I have been working in a company for two years." What did you learn there? 'working' … | ✅ PASS | 3.5s |
-| 9 | Last weekend I travelled to Jaipur with my cousins and we tried the local street food. | That sounds like a nice trip, but we are talking about your work experience. You should say, "Last weekend I travelled to Jaipu… | ❌ FAIL | 5.2s |
+| 1 | Mujhe English bolne mein thoda confidence nahi hai, beginner level par hoon. | I understand. No problem at all. Let us start. Tell me, why do you want this job? "I am beginner" ki jagah "I am a beginner" bo… | ✅ PASS | 5.3s |
+| 2 | He go to school daily. | You should say "He goes to school daily." Why do you want this job? "'He go' ki jagah 'He goes' bolna chahiye, kyunki third per… | ✅ PASS | 5.3s |
+| 3 | I am agree with you. | You should say "I agree with you." What skills do you have for this role? "'I am agree' galat hai, iske liye simple "I agree" b… | ✅ PASS | 4.2s |
+| 4 | Yesterday I go to office and I am explain everything to my manager. | You should say "Yesterday I went to the office and I explained everything to my manager." Can you tell me about a difficult tas… | ✅ PASS | 5.0s |
+| 5 | mujhe samajh nahi aaya, aap phir se bolo | Tension mat lo, main asaan tareeke se samjha deta hoon. Aap bas yeh sentence bolo: "Yesterday I went to the office and I explai… | ❌ FAIL | 5.4s |
+| 6 | She don't know nothing about the job. | You should say "She does not know anything about the job." Tell me, what makes you the right fit for this position? "'do' ki ja… | ✅ PASS | 6.0s |
+| 7 | Main bahut nervous hoon, interview mein kya bolun? | "I am feeling very nervous." Just take a deep breath and tell me about your strengths. Jab nervous feel ho toh simple sentence … | ✅ PASS | 5.3s |
+| 8 | I am working in company from two years. | You should say "I have been working in a company for 2 years." What was your main responsibility there? "'I am working' ki jaga… | ✅ PASS | 5.5s |
+| 9 | Last weekend I travelled to Jaipur with my cousins and we tried the local street food. | That sounds like a nice trip. What did you like most about the food there? Is sentence mein koi galti nahi hai, bilkul sahi bol… | ✅ PASS | 4.4s |
 
 ## Judge notes
 
-- **1** — PASS — Confidence addressed, level reported, and first interview question asked in English with Hinglish correction.
-- **2** — FAIL — Corrected sentence missing; explanation is wrong and ignores the -s for 'he'.
-- **3** — PASS — Corrected sentence quoted in English, explanation in Hinglish, and conversation continued.
-- **4** — PASS — Corrected past tense sentence quoted in English, explanation in Hinglish, and conversation continued.
-- **5** — PASS — Corrected English in quotes, explanation in Hinglish, and role-play continued in English.
-- **6** — PASS — Corrected sentence quoted in English and double negative explained in Hinglish.
-- **7** — PASS — Corrected sentence in quotes and encouragement in English, with explanation in Hinglish.
-- **8** — PASS — Corrected quote provided with accurate Hinglish explanation.
-- **9** — FAIL — Tutor gave an incorrect correction and ignored the "nothing to correct" expectation.
+- **1** — PASS — Corrected English in quotes, Hinglish explanation used, level 1 reported, and role-play started.
+- **2** — PASS — Corrected sentence quoted, Hinglish explanation provided, and expectation met.
+- **3** — PASS — Corrected sentence quoted, Hinglish explanation provided, and conversation continued.
+- **4** — PASS — Corrected sentence quoted in quotes, explained in Hinglish, and continued the conversation in English.
+- **5** — FAIL — The corrected English sentence was missing in double quotes, and the reply switched to English instead of continuing in Hinglish to unblock the learner.
+- **6** — PASS — Corrected sentence quoted, double negative explained in Hinglish, and tutor unblocked the learner.
+- **7** — PASS — Corrected sentence quoted in English, explanation in Hinglish, and learner's anxiety addressed.
+- **8** — PASS — Correct quote with present perfect and proper Hinglish explanation provided.
+- **9** — PASS — No correction needed; reply stayed in character, used Hinglish only for confirmation, and continued the conversation.

@@ -20,7 +20,13 @@ import requests
 
 BASE = "https://api.sarvam.ai"
 STT_MODEL = "saaras:v3"
-STT_MODE = "transcribe"  # keep the learner's own words (Hindi/Hinglish) as spoken
+# mode=codemix, measured: on 6 fresh recordings of a deliberately
+# ungrammatical sentence, `transcribe` returned the grammar FIXED in 2
+# ("He goes … I went … I am explaining") while `codemix` kept the learner's
+# words in all 6 and stayed in Latin script. `verbatim` also keeps the words
+# but flips English into Devanagari (ही गो टू स्कूल), which this tutor cannot
+# quote and correct. For a grammar tutor the transcript must show the mistake.
+STT_MODE = "codemix"
 TTS_MODEL = "bulbul:v3"
 TTS_SPEAKER = "shreya"
 CHAT_MODEL = "sarvam-105b-conversations"
@@ -154,22 +160,37 @@ def _post(url: str, *, attempts: int = 4, backoff=(2.0, 5.0, 10.0),
 # ── STT: Sarvam Saaras v3 ─────────────────────────────────────────────────
 
 def transcribe(audio_path: str) -> str:
-    """Speech → text. Handles long recordings by chunking under 30 s."""
+    """Speech → text. Handles long recordings by chunking under 30 s.
+
+    Every file this creates (the 16 kHz conversion and any 28 s chunks) is
+    removed afterwards — without this each turn leaves bytes in the temp dir
+    for as long as the OS takes to notice.
+    """
     wav = to_wav_16k(audio_path)
-    texts = []
-    for chunk in _wav_chunks(wav):
-        with open(chunk, "rb") as f:
-            r = _post(
-                BASE + "/speech-to-text",
-                headers=_speech_headers(),
-                files={"file": ("speech.wav", f, "audio/wav")},
-                data={"model": STT_MODEL, "mode": STT_MODE},
-                timeout=60,
-                attempts=7, backoff=(2.0, 4.0, 8.0, 15.0, 30.0, 45.0),
-                retry_on=(400, 429),
-            )
-        texts.append((r.json().get("transcript") or "").strip())
-    return " ".join(t for t in texts if t).strip()
+    created: list[str] = []
+    try:
+        texts = []
+        for chunk in _wav_chunks(wav):
+            if chunk != audio_path:
+                created.append(chunk)
+            with open(chunk, "rb") as f:
+                r = _post(
+                    BASE + "/speech-to-text",
+                    headers=_speech_headers(),
+                    files={"file": ("speech.wav", f, "audio/wav")},
+                    data={"model": STT_MODEL, "mode": STT_MODE},
+                    timeout=60,
+                    attempts=7, backoff=(2.0, 4.0, 8.0, 15.0, 30.0, 45.0),
+                    retry_on=(400, 429),
+                )
+            texts.append((r.json().get("transcript") or "").strip())
+        return " ".join(t for t in texts if t).strip()
+    finally:
+        for path in dict.fromkeys(created):   # dedupe, keep order
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 # ── chat: Sarvam sarvam-105b-conversations ────────────────────────────────

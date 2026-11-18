@@ -25,6 +25,7 @@ const els = {
 
 let started = false;
 let busy = false;
+let stopping = false; // true while a recording is being finalised
 let rec = null; // the active microphone recording, while it is open
 let flushing = null; // promise chain that keeps audio uploads in order
 
@@ -352,6 +353,7 @@ function flushAudio() {
 }
 
 async function startListening() {
+  stopping = false; // self-heal if a previous stop threw before clearing it
   let media;
   try {
     media = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -429,6 +431,7 @@ async function stopListening() {
   const r = rec;
   if (!r) return;
   rec = null; // no new audio from here on
+  stopping = true; // a second click must not start a new session mid-stop
 
   clearInterval(r.timer);
   const blob = await stopFallback(r);
@@ -467,7 +470,9 @@ async function stopListening() {
   }
 
   const text = (data.text || '').trim();
-  if (text) {
+  const finalized = data.final !== false;
+  if (text && finalized) {
+    // the stream reached a final transcript — use it directly
     renderLive({ ...data, final: true });
     await runTurn(() =>
       fetch('/api/turn', {
@@ -478,12 +483,27 @@ async function stopListening() {
     );
     showLive(false);
   } else if (blob.size) {
+    // No final (VAD never settled, websocket died, or nothing was heard):
+    // the recording itself is the reliable source, and batch STT keeps the
+    // learner's words as spoken. Never send an unfinished partial instead.
     showLive(false);
     await sendAudio(blob);
+  } else if (text) {
+    // no fallback recording exists — a partial beats losing the turn
+    renderLive({ ...data, final: true });
+    await runTurn(() =>
+      fetch('/api/turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, stt_ms: data.stt_ms || 0 }),
+      }),
+    );
+    showLive(false);
   } else {
     showLive(false);
     setStatus('⚠️ Could not hear anything — please try again.', true);
   }
+  stopping = false;
 }
 
 async function toggleMic() {
@@ -491,6 +511,7 @@ async function toggleMic() {
     setStatus('⚠️ Press Start first.', true);
     return;
   }
+  if (stopping) return; // the previous recording is still being finalised
   if (rec) return stopListening();
   if (busy) return;
   await startListening();

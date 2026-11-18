@@ -51,6 +51,16 @@ _streams: dict[str, "realtime.StreamSession"] = {}
 MAX_STREAMS = 4
 
 
+def _unlink(path: str | None) -> None:
+    """Best-effort temp cleanup — a missing file is not an error here."""
+    if not path:
+        return
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def remember_audio(data: bytes) -> str:
     token = uuid.uuid4().hex
     _audio[token] = data
@@ -153,8 +163,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "Press Start first."},
                                   HTTPStatus.CONFLICT)
             turn = tutor.turn(audio_path=audio_path, text=text, stt_ms=stt_ms)
-            with open(turn.audio_path, "rb") as f:
-                token = remember_audio(f.read())
+            try:
+                with open(turn.audio_path, "rb") as f:
+                    token = remember_audio(f.read())
+            finally:
+                _unlink(audio_path)      # the recording — held in memory now
+                _unlink(turn.audio_path)  # the reply WAV — read above
             self._json({
                 "heard": turn.heard,
                 "reply": turn.spoken_text,

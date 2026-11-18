@@ -29,11 +29,14 @@ import sarvam
 
 URL = "wss://api.sarvam.ai/speech-to-text-realtime/ws"
 MODEL = "saaras:v3-realtime"
+# one mode for both paths — batch and live must keep the learner's mistakes
+MODE = sarvam.STT_MODE
 SAMPLE_RATE = 16000
 BYTES_PER_SECOND = SAMPLE_RATE * 2  # linear16, mono
 
 TRAILING_SILENCE_S = 1.6
 FINAL_TIMEOUT_S = 6.0
+NO_SPEECH_TIMEOUT_S = 1.5   # silence in, silence out — no reason to wait longer
 SILENCE_SLICE = 16000 * 2 * 250 // 1000  # 250 ms
 MAX_FRAME = 16000 * 2 * 500 // 1000      # 500 ms — API caps a frame at ~1 s
 
@@ -101,7 +104,11 @@ class StreamSession:
             self.feed(silence)
             time.sleep(0.01)
 
-        deadline = t_stop + FINAL_TIMEOUT_S
+        # Nothing heard at all: don't hold the learner for the full timeout.
+        # The UI falls back to the MediaRecorder blob, so a short wait costs
+        # nothing but removes a 6 s dead pause after silence.
+        heard = self._speech or self._partial or self._final
+        deadline = t_stop + (FINAL_TIMEOUT_S if heard else NO_SPEECH_TIMEOUT_S)
         while time.time() < deadline:
             with self._lock:
                 done = self._last_idx >= 0 and self._last_idx in self._final
@@ -154,7 +161,7 @@ class StreamSession:
     # ── asyncio side ─────────────────────────────────────────────────────
     async def _run(self) -> None:
         url = (f"{URL}?language_code=auto&model={MODEL}"
-               f"&stream_type=balanced&mode=transcribe")
+               f"&stream_type=balanced&mode={MODE}")
         try:
             async with websockets.connect(
                 url,
