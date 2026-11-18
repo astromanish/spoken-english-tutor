@@ -110,6 +110,7 @@ class Turn:
 class Tutor:
     topic: str = TOPICS[0]
     level: int = 1
+    speaker: str = sarvam.TTS_SPEAKER   # the voice she speaks in, per session
     history: list[dict] = field(default_factory=list)
 
     def __post_init__(self):
@@ -173,11 +174,11 @@ class Tutor:
             # synthesise both messages together: the turn costs the slower of
             # the two, not the sum
             with ThreadPoolExecutor(max_workers=2) as pool:
-                first = pool.submit(sarvam.speak_mixed, segments)
-                second = pool.submit(sarvam.speak_mixed, seg2)
+                first = pool.submit(sarvam.speak_mixed, segments, self.speaker)
+                second = pool.submit(sarvam.speak_mixed, seg2, self.speaker)
                 audio_out, audio2 = first.result(), second.result()
         else:
-            audio_out, audio2 = sarvam.speak_mixed(segments), ""
+            audio_out, audio2 = sarvam.speak_mixed(segments, self.speaker), ""
         ms_tts = int((time.time() - t2) * 1000)
 
         return Turn(heard=heard, spoken_text=spoken, audio_path=audio_out,

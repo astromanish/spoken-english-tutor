@@ -24,6 +24,7 @@ Bulbul v3 (text-to-speech). No other model provider is involved.
 | 6 | Ends with a written summary: mistakes, corrections, 3 practice items | **End session** button |
 | 7 | Simple UI | vanilla JS (`static/`) on a stdlib server (`server.py`) |
 | + | A live voice agent, not a chat box | ears and mouth always on: `static/app.js` + `static/vad.js` |
+| + | Pick her voice from all 37 bulbul voices, with a preview | Voice select + `POST /api/preview` |
 | + | Turn ends after 2 s of silence, mic can be muted | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
 
 ## Run it
@@ -41,6 +42,13 @@ Press **Start** and her ear opens while her first line plays out loud: she
 introduces her character and asks how confident you are speaking English — that
 answer sets how much she corrects you. Then just talk. She answers out loud,
 asks the next thing, and keeps going; **End** writes the summary.
+
+The **Voice** picker is every `bulbul:v3` speaker Sarvam offers — 37 of them, each
+labelled with the provider's own tone hint where there is one — and **Preview**
+speaks a two-line sample in that voice (one English line, one Hinglish line, so
+you hear both before committing). The choice is remembered in `localStorage` and
+travels with the session as a `speaker` field; an unknown one falls back to the
+default rather than failing the start.
 
 There is no text box and no transcript log. The ear stays open the whole
 session, including while she is speaking — if you talk over her she stops
@@ -104,7 +112,8 @@ for the mic, which is what keeps her own voice out of the turn-taking.
   names and code-switched words correctly. Free API tier.
 - **No UI framework** — the browser captures with Web Audio, plays the reply
   through an `<audio>` element, and talks to a handful of JSON endpoints
-  (`/api/meta`, `/api/session`, `/api/turn`, `/api/summary`, `/api/stream/*`).
+  (`/api/meta`, `/api/session`, `/api/turn`, `/api/summary`, `/api/preview`,
+  `/api/stream/*`).
   `server.py` is `http.server` from the standard library, so the app's only
   dependencies are `requests`, `pyyaml` and `websockets`. Gradio was dropped
   because it pinned a large dependency tree for a UI that is one page of HTML.

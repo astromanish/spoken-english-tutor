@@ -18,6 +18,8 @@ const $ = (id) => document.getElementById(id);
 
 const els = {
   topic: $('topic'),
+  voice: $('voice'),
+  preview: $('preview'),
   start: $('start'),
   badge: $('badge'),
   status: $('status'),
@@ -620,18 +622,59 @@ function unlockAudio() {
   }
 }
 
+const VOICE_KEY = 'priyanka.voice';
+const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 async function loadMeta() {
   try {
     const res = await fetch('/api/meta');
     if (!res.ok) throw new Error(`meta ${res.status}`);
     const meta = await res.json();
+
     // topics come from the server's own TOPICS list and are escaped here, so
     // the option markup cannot carry a tag
     els.topic.innerHTML = meta.topics
       .map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`)
       .join('');
+
+    // one option per bulbul voice, with the provider's tone hint when there is one
+    els.voice.innerHTML = (meta.speakers || [])
+      .map((sp) => {
+        const label = titleCase(sp.id) + (sp.tone ? ` · ${sp.tone}` : '');
+        return `<option value="${escapeHtml(sp.id)}">${escapeHtml(label)}</option>`;
+      })
+      .join('');
+
+    let saved = '';
+    try { saved = localStorage.getItem(VOICE_KEY) || ''; } catch (e) { /* private mode */ }
+    const known = (meta.speakers || []).some((sp) => sp.id === saved);
+    els.voice.value = known ? saved : meta.default_speaker;
+    els.preview.disabled = !els.voice.value;
   } catch (e) {
-    setStatus(`⚠️ Could not load topics: ${e.message}`, true);
+    setStatus(`⚠️ Could not load the setup: ${e.message}`, true);
+  }
+}
+
+/** Speak a two-line sample in the chosen voice, before committing to a session. */
+async function previewVoice() {
+  const speaker = els.voice.value;
+  if (!speaker) return;
+  const label = els.preview.textContent;
+  els.preview.disabled = true;
+  els.preview.textContent = 'Loading…';
+  try {
+    const data = await postJson('/api/preview', { speaker });
+    if (data.audio) {
+      audioQueue.length = 0;
+      els.player.src = data.audio;
+      els.player.play().catch(() => setStatus('⚠️ Tap anywhere, then press Hear her again', true));
+      setStatus(`Sample playing · ${titleCase(data.speaker)}`);
+    }
+  } catch (e) {
+    setStatus(`⚠️ Preview failed: ${e.message}`, true);
+  } finally {
+    els.preview.disabled = false;
+    els.preview.textContent = label;
   }
 }
 
@@ -647,10 +690,15 @@ async function startSession() {
   setState('connecting');
 
   try {
-    const data = await postJson('/api/session', { topic: els.topic.value });
+    const data = await postJson('/api/session', {
+      topic: els.topic.value,
+      speaker: els.voice.value,
+    });
     started = true;
     muted = false;
     els.topic.disabled = true;
+    els.voice.disabled = true;
+    els.preview.disabled = true;
     els.mic.disabled = false;
     els.end.disabled = false;
     els.mic.setAttribute('aria-pressed', 'true');
@@ -666,6 +714,8 @@ async function startSession() {
       muted = true;
       els.start.disabled = false;
       els.topic.disabled = false;
+      els.voice.disabled = false;
+      els.preview.disabled = false;
       els.mic.disabled = true;
       els.end.disabled = true;
       els.mic.setAttribute('aria-pressed', 'true');
@@ -730,6 +780,8 @@ async function endSession() {
     started = false;
     els.start.disabled = false;
     els.topic.disabled = false;
+    els.voice.disabled = false;
+    els.preview.disabled = false;
     els.mic.setAttribute('aria-pressed', 'true');
     els.micLabel.textContent = 'Mute ear';
     setState('ended');
@@ -743,6 +795,10 @@ async function endSession() {
 /* ── wiring ─────────────────────────────────────────────────────────────── */
 
 els.start.addEventListener('click', startSession);
+els.preview.addEventListener('click', previewVoice);
+els.voice.addEventListener('change', () => {
+  try { localStorage.setItem(VOICE_KEY, els.voice.value); } catch (e) { /* private mode */ }
+});
 els.mic.addEventListener('click', toggleEar);
 els.end.addEventListener('click', endSession);
 

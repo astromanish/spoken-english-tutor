@@ -76,13 +76,22 @@ h1 {
 }
 
 .setup {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
-  align-items: flex-end;
-  flex-wrap: wrap;
+  align-items: end;
 }
 
-.field { display: flex; flex-direction: column; gap: 6px; flex: 1 1 240px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* the two actions sit under the fields, right-aligned with the card edge */
+.setup-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
 .field span { font-size: 13px; color: var(--muted); font-weight: 600; }
 
 select {
@@ -467,7 +476,8 @@ svg .wave { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap:
 
 @media (max-width: 560px) {
   main { padding: 20px 12px 48px; }
-  .setup button { width: 100%; }
+  .setup { grid-template-columns: 1fr; }
+  .setup-actions button { flex: 1 1 auto; }
   .cap-label { flex-basis: 62px; }
   .controls button { flex: 1 1 auto; }
 }

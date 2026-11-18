@@ -89,6 +89,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/meta":
             return self._json({
                 "topics": TOPICS,
+                "speakers": sarvam.SPEAKERS,
+                "default_speaker": sarvam.TTS_SPEAKER,
             })
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -102,6 +104,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._turn()
             if path == "/api/summary":
                 return self._summary()
+            if path == "/api/preview":
+                return self._preview()
             if path == "/api/stream/start":
                 return self._stream_start()
             if path.startswith("/api/stream/"):
@@ -117,18 +121,19 @@ class Handler(BaseHTTPRequestHandler):
         topic = body.get("topic") or TOPICS[0]
         if topic not in TOPICS:
             topic = TOPICS[0]
+        speaker = sarvam.speaker_or_default(body.get("speaker"))
 
         with _lock:
             # No level picker: the tutor asks his confidence in the first
             # message and sets the correction level from the answer.
-            tutor = Tutor(topic=topic)
+            tutor = Tutor(topic=topic, speaker=speaker)
             _state["tutor"] = tutor
 
             # The first message is spoken, not printed: it is synthesised here
             # so the browser can start the ear and the mouth in the same beat.
             greeting_audio, warning = "", ""
             try:
-                path = sarvam.speak_mixed(tutor.greeting_segments)
+                path = sarvam.speak_mixed(tutor.greeting_segments, tutor.speaker)
                 try:
                     with open(path, "rb") as f:
                         token = remember_audio(f.read())
@@ -146,6 +151,7 @@ class Handler(BaseHTTPRequestHandler):
                 "level_name": LEVELS.get(tutor.level, "?"),
                 "awaiting_confidence": tutor.awaiting_confidence,
                 "topic": topic,
+                "speaker": tutor.speaker,
             })
 
     def _turn(self):
@@ -213,6 +219,24 @@ class Handler(BaseHTTPRequestHandler):
                     "total": turn.ms_total,
                 },
             })
+
+    # Two lines, so the picker can be judged on English and on Hinglish before
+    # a session starts — the voice has to handle both.
+    PREVIEW_SEGMENTS = [
+        ("en-IN", "Hi, I am Priyanka, and I will help you speak English."),
+        ("en-IN", "Chaliye shuru karein — aap bas bolna shuru kijiye."),
+    ]
+
+    def _preview(self):
+        speaker = sarvam.speaker_or_default(
+            (self._body_json() or {}).get("speaker"))
+        path = sarvam.speak_mixed(self.PREVIEW_SEGMENTS, speaker)
+        try:
+            with open(path, "rb") as f:
+                token = remember_audio(f.read())
+        finally:
+            _unlink(path)
+        self._json({"speaker": speaker, "audio": f"/audio/{token}.wav"})
 
     def _summary(self):
         with _lock:

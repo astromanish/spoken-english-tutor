@@ -28,7 +28,57 @@ STT_MODEL = "saaras:v3"
 # quote and correct. For a grammar tutor the transcript must show the mistake.
 STT_MODE = "codemix"
 TTS_MODEL = "bulbul:v3"
-TTS_SPEAKER = "shreya"
+TTS_SPEAKER = "shreya"   # bulbul:v3 default for this app
+
+# Every bulbul:v3 voice, in the provider's own list. `tone` is Sarvam's hint
+# where they give one; the rest are named but unlabelled. A different speaker
+# changes nothing else about a turn — same text, same language routing.
+SPEAKERS: list[dict] = [
+    {"id": "priya", "tone": "warm, friendly"},
+    {"id": "neha", "tone": "warm, conversational"},
+    {"id": "pooja", "tone": "warm, friendly"},
+    {"id": "shreya", "tone": "calm, narration"},
+    {"id": "kavya", "tone": "calm, professional"},
+    {"id": "ritu", "tone": "calm, professional"},
+    {"id": "tanya", "tone": "young, energetic"},
+    {"id": "suhani", "tone": "young, energetic"},
+    {"id": "aditya", "tone": "professional, news-anchor"},
+    {"id": "rahul", "tone": "professional, conversational"},
+    {"id": "kabir", "tone": "professional, warm"},
+    {"id": "anand", "tone": "mature, professional"},
+    {"id": "vijay", "tone": "mature, authoritative"},
+    {"id": "gokul", "tone": "mature, narration"},
+    {"id": "shubh", "tone": "provider default"},
+    {"id": "advait", "tone": ""},
+    {"id": "amit", "tone": ""},
+    {"id": "ashutosh", "tone": ""},
+    {"id": "aayan", "tone": ""},
+    {"id": "dev", "tone": ""},
+    {"id": "ishita", "tone": ""},
+    {"id": "kavitha", "tone": ""},
+    {"id": "mani", "tone": ""},
+    {"id": "manan", "tone": ""},
+    {"id": "mohit", "tone": ""},
+    {"id": "ratan", "tone": ""},
+    {"id": "rehan", "tone": ""},
+    {"id": "rohan", "tone": ""},
+    {"id": "roopa", "tone": ""},
+    {"id": "rupali", "tone": ""},
+    {"id": "simran", "tone": ""},
+    {"id": "shruti", "tone": ""},
+    {"id": "soham", "tone": ""},
+    {"id": "sumit", "tone": ""},
+    {"id": "sunny", "tone": ""},
+    {"id": "tarun", "tone": ""},
+    {"id": "varun", "tone": ""},
+]
+SPEAKER_IDS = {sp["id"] for sp in SPEAKERS}
+
+
+def speaker_or_default(name: str | None) -> str:
+    """A speaker the API will accept — anything unknown falls back to the default."""
+    name = (name or "").strip().lower()
+    return name if name in SPEAKER_IDS else TTS_SPEAKER
 CHAT_MODEL = "sarvam-105b-conversations"
 
 STT_MAX_SECONDS = 30  # REST endpoint limit
@@ -214,10 +264,11 @@ def chat(messages: list[dict], temperature: float = 0.4, max_tokens: int = 700) 
 
 # ── TTS: Sarvam Bulbul v3 ─────────────────────────────────────────────────
 
-def _speak_once(text: str, language_code: str) -> bytes:
+def _speak_once(text: str, language_code: str,
+                speaker: str = TTS_SPEAKER) -> bytes:
     """One synthesis call, retried once — a hung request would stall the reply."""
     body = {"text": text, "language_code": language_code,
-            "speaker": TTS_SPEAKER, "model": TTS_MODEL}
+            "speaker": speaker_or_default(speaker), "model": TTS_MODEL}
     audio = b""
     for attempt in (1, 2):
         try:
@@ -280,7 +331,8 @@ def normalize_wav(path: str) -> str:
     return path
 
 
-def speak(text: str, language_code: str = "en-IN") -> str:
+def speak(text: str, language_code: str = "en-IN",
+          speaker: str = TTS_SPEAKER) -> str:
     """Text → speech. Returns the path of a WAV file ready to play.
 
     Sarvam occasionally answers a rate-limited request with blank audio. That
@@ -288,7 +340,7 @@ def speak(text: str, language_code: str = "en-IN") -> str:
     instead of being handed on.
     """
     for attempt in range(3):
-        chunks = [_speak_once(part, language_code)
+        chunks = [_speak_once(part, language_code, speaker)
                   for part in _split_for_tts(text)]
         data = concat_wavs(chunks)
         if len(data) >= 4000:          # ~0.1s of 16-bit audio — blank otherwise
@@ -316,7 +368,8 @@ def _merge_segments(segments: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return merged
 
 
-def speak_mixed(segments: list[tuple[str, str]]) -> str:
+def speak_mixed(segments: list[tuple[str, str]],
+                speaker: str = TTS_SPEAKER) -> str:
     """Speak [(language_code, text), …] in order as one continuous audio file.
 
     The segments are independent, so they are synthesised in parallel and
@@ -331,7 +384,8 @@ def speak_mixed(segments: list[tuple[str, str]]) -> str:
 
     chunks: list[bytes | None] = [None] * len(jobs)
     with ThreadPoolExecutor(max_workers=min(6, len(jobs))) as pool:
-        futures = [pool.submit(_speak_once, text, lang) for lang, text in jobs]
+        futures = [pool.submit(_speak_once, text, lang, speaker)
+                   for lang, text in jobs]
         for i, fut in enumerate(futures):
             chunks[i] = fut.result()  # re-raises the first real failure
     data = concat_wavs([c for c in chunks if c])
