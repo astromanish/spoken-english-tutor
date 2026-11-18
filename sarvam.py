@@ -277,6 +277,7 @@ def speech_stream(text: str, language_code: str = "en-IN",
         "speech_sample_rate": TTS_SAMPLE_RATE,
         "output_audio_codec": codec,
     }}
+    got = 0
     with connect(TTS_STREAM_URL,
                  additional_headers={"api-subscription-key": api_key()},
                  max_size=2 ** 23, open_timeout=20) as ws:
@@ -299,9 +300,21 @@ def speech_stream(text: str, language_code: str = "en-IN",
             if kind == "audio":
                 audio = (event.get("data") or {}).get("audio")
                 if audio:
-                    yield base64.b64decode(audio)
+                    chunk = base64.b64decode(audio)
+                    got += len(chunk)
+                    yield chunk
             elif kind == "error":
-                raise RuntimeError(f"Sarvam TTS stream: {event.get('data') or event}")
+                # After audio has arrived this is the provider complaining about a
+                # trailing fragment — typically a quoted sentence that leaves a bare
+                # `"` as the last chunk ("Text must contain at least one character
+                # from the allowed languages"). The speech is already out; raising
+                # here used to abort the whole reply and silence the Hinglish line
+                # that came next. Only a failure *before* any audio is fatal.
+                message = str(event.get("data") or event)[:160]
+                if got == 0:
+                    raise RuntimeError(f"Sarvam TTS stream: {message}")
+                print(f"[tts] trailing error after {got} bytes ignored: {message}", flush=True)
+                return
             elif kind in ("end", "complete", "flushed"):
                 return
 

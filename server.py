@@ -477,11 +477,21 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             emit(head)
-            for chunk in stream:
-                emit(chunk)
-            for language, text in segments[1:]:
-                for chunk in sarvam.speech_stream(text, language, speaker):
+            try:
+                for chunk in stream:
                     emit(chunk)
+            except Exception as e:
+                # the correction is already heard; never let its tail take the
+                # explanation down with it
+                print(f"[speak] segment 1 cut short: {type(e).__name__}: {e}",
+                      flush=True)
+            for index, (language, text) in enumerate(segments[1:], start=2):
+                try:
+                    for chunk in sarvam.speech_stream(text, language, speaker):
+                        emit(chunk)
+                except Exception as e:
+                    print(f"[speak] segment {index} failed: {type(e).__name__}: {e}",
+                          flush=True)
             print(f"[speak] done {written[0]} bytes in {time.time()-t_start:.2f}s", flush=True)
             self.wfile.write(b"0\r\n\r\n")      # end of chunked body
             self.wfile.flush()
