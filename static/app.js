@@ -105,6 +105,16 @@ function setStatus(text, warn = false) {
   els.status.classList.toggle('warn', warn);
 }
 
+/* Anything that goes wrong reads the same on screen — the learner is not reading a
+   log, and "invalid_api_key" is not a sentence. The reason still reaches the console. */
+const FAIL_TEXT = 'Something went wrong. Start again.';
+
+function fail(detail, state = null) {
+  if (detail) console.error('[tutor]', detail);
+  if (state) setState(state, FAIL_TEXT, true);
+  else setStatus(FAIL_TEXT, true);
+}
+
 function setState(name, text, warn = false) {
   stateName = name;
   els.orb.dataset.state = name;
@@ -414,7 +424,7 @@ async function pump() {
       showTimings({ ...lastTimings, tts_first: firstMs });
     });
   } catch (e) {
-    if (e.name !== 'AbortError') setStatus(`⚠️ ${e.message}`, true);
+    if (e.name !== 'AbortError') fail(e.message);
   }
   playing = false;
   if (audioQueue.length) return pump();
@@ -453,7 +463,7 @@ async function openStream() {
   try {
     ({ id } = await postJson('/api/stream/start'));
   } catch (e) {
-    setStatus(`⚠️ Live transcription unavailable: ${e.message}`, true);
+    fail(`live transcription unavailable: ${e.message}`);
     return null;
   }
 
@@ -485,7 +495,7 @@ function flushPending(s) {
       const text = (data.text || '').trim();
       if (text && s === stream) setCap('you', text); // live words while he speaks
     } catch (e) {
-      setStatus(`⚠️ Live transcription dropped: ${e.message}`, true);
+      fail(`live transcription dropped: ${e.message}`);
     }
   });
   return s.flushing;
@@ -509,7 +519,7 @@ async function closeStream() {
         body: new Blob(parts, { type: 'application/octet-stream' }),
       });
     } catch (e) {
-      setStatus(`⚠️ Live transcription dropped: ${e.message}`, true);
+      fail(`live transcription dropped: ${e.message}`);
     }
   }
 
@@ -518,7 +528,7 @@ async function closeStream() {
   try {
     data = await postJson(`/api/stream/${s.id}/stop`);
   } catch (e) {
-    setStatus(`⚠️ Transcription failed: ${e.message}`, true);
+    fail(`transcription failed: ${e.message}`);
   }
   return { text: (data.text || '').trim(), stt_ms: data.stt_ms || 0, blob };
 }
@@ -537,7 +547,7 @@ async function startEar() {
     });
   } catch (e) {
     earError = e.message;
-    setState('idle', `⚠️ Microphone unavailable: ${e.message}`, true);
+    fail(`microphone: ${e.message}`, 'idle');
     return false;
   }
 
@@ -653,7 +663,7 @@ function queueTurn(worker) {
     try {
       await worker();
     } catch (e) {
-      setState('listening', `⚠️ ${e.message}`, true);
+      fail(e.message, 'listening');
     }
   });
   return turnChain;
@@ -710,7 +720,7 @@ function playHeld(token) {
 }
 
 function reportWarning(data) {
-  if (data.warning) setStatus(`⚠️ ${data.warning}`, true);
+  if (data.warning) fail(data.warning);
 }
 
 /* ── session ────────────────────────────────────────────────────────────── */
@@ -750,7 +760,7 @@ async function loadMeta() {
     els.voice.value = known ? saved : meta.default_speaker;
     els.preview.disabled = !els.voice.value;
   } catch (e) {
-    setStatus(`⚠️ Could not load the setup: ${e.message}`, true);
+    fail(`setup: ${e.message}`);
   }
 }
 
@@ -769,10 +779,10 @@ async function previewVoice() {
       const chosen = els.voice.selectedOptions[0];
       setStatus(`Sample playing · ${chosen ? chosen.text : data.speaker}`);
       await playStream(data.audio);
-      setStatus('Ear and mouth ready');
+      setStatus('Everything ready');
     }
   } catch (e) {
-    setStatus(`⚠️ Preview failed: ${e.message}`, true);
+    fail(`preview: ${e.message}`);
   } finally {
     els.preview.disabled = false;
     els.preview.textContent = label;
@@ -819,18 +829,18 @@ async function startSession() {
       els.mic.disabled = true;
       els.end.disabled = true;
       setMicPressed(false);
-      setState('idle', `⚠️ Microphone unavailable: ${earError} — press Start to retry`, true);
+      fail(`microphone: ${earError}`, 'idle');
       return;
     }
     earError = '';
     paintState();
     setState('speaking');
     enqueueAudio(data.audio); // her first line, out loud
-    if (data.warning) setStatus(`⚠️ ${data.warning}`, true);
-    else if (!data.audio) setState('listening', '⚠️ The greeting came back silent', true);
+    if (data.warning) fail(data.warning);
+    else if (!data.audio) fail('the greeting came back silent', 'listening');
   } catch (e) {
     els.start.disabled = false;
-    setState('idle', `⚠️ ${e.message}`, true);
+    fail(e.message, 'idle');
   }
 }
 
@@ -883,7 +893,7 @@ async function endSession() {
   } catch (e) {
     els.end.disabled = false;
     els.mic.disabled = false;
-    setState('listening', `⚠️ Summary failed: ${e.message}`, true);
+    fail(`summary: ${e.message}`, 'listening');
   }
 }
 
