@@ -212,9 +212,12 @@ function markdown(src, bump = 0) {
 
 /* ── audio plumbing ─────────────────────────────────────────────────────── */
 
-function pickMime() {
-  const options = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
-  return options.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+/** The utterance as a WAV (see wav.js) — Saaras reads it without ffmpeg. */
+function utteranceBlob(s) {
+  if (!s || !s.pcm.length) return null;
+  // toPcm16 already resampled every block to STT_RATE, so the header says 16 kHz
+  const { bytes } = Wav.wavBytes(s.pcm, STT_RATE);
+  return new Blob([bytes], { type: 'audio/wav' });
 }
 
 /** 16-bit little-endian PCM, resampled to 16 kHz if the context refused it. */
@@ -337,21 +340,9 @@ async function openStream() {
     return null;
   }
 
-  const s = { id, pending: [], chunks: [], recorder: null, mime: 'audio/webm', flushing: null, timer: null };
-
-  // Safety net for this utterance only: if the stream yields no words, the
-  // recording itself is uploaded and transcribed the batch way.
-  try {
-    const mime = pickMime();
-    s.mime = (mime || 'audio/webm').split(';')[0];
-    s.recorder = new MediaRecorder(ear.media, mime ? { mimeType: mime } : undefined);
-    s.recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size) s.chunks.push(e.data);
-    };
-    s.recorder.start();
-  } catch (e) {
-    s.recorder = null;
-  }
+  // `pending` is what goes up the wire; `pcm` is the same audio kept locally as
+  // the safety net for this utterance, in case the stream comes back empty.
+  const s = { id, pending: [], pcm: [], flushing: null, timer: null };
 
   s.timer = setInterval(() => flushPending(s), FLUSH_MS);
   stream = s;
@@ -383,21 +374,6 @@ function flushPending(s) {
   return s.flushing;
 }
 
-function stopRecorder(s) {
-  return new Promise((resolve) => {
-    if (!s || !s.recorder || s.recorder.state === 'inactive') {
-      resolve(s && s.chunks.length ? new Blob(s.chunks, { type: s.mime }) : null);
-      return;
-    }
-    s.recorder.addEventListener(
-      'stop',
-      () => resolve(s.chunks.length ? new Blob(s.chunks, { type: s.mime }) : null),
-      { once: true },
-    );
-    s.recorder.stop();
-  });
-}
-
 /** Close the current utterance: last chunk in, final transcript out. */
 async function closeStream() {
   const s = stream;
@@ -420,7 +396,7 @@ async function closeStream() {
     }
   }
 
-  const blob = await stopRecorder(s);
+  const blob = utteranceBlob(s);
   let data = {};
   try {
     data = await postJson(`/api/stream/${s.id}/stop`);
@@ -509,7 +485,9 @@ function onBlock(samples, rate) {
     setState('hearing');
   }
 
-  stream.pending.push(toPcm16(samples, rate));
+  const pcm = toPcm16(samples, rate);
+  stream.pending.push(pcm);
+  stream.pcm.push(pcm);
 
   if (event === 'turn-end') finalizeUtterance();
 }
