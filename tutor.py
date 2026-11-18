@@ -127,9 +127,16 @@ class Tutor:
 
     # ── one learner turn: audio → STT → LLM → TTS ────────────────────────
     def turn(self, audio_path: str | None = None, text: str | None = None,
-             stt_ms: int = 0) -> Turn:
+             stt_ms: int = 0, replace_previous: bool = False) -> Turn:
         """One learner turn. Text comes either from audio (STT here) or from the
-        UI, which may pass `stt_ms` measured while it streamed the transcript."""
+        UI, which may pass `stt_ms` measured while it streamed the transcript.
+
+        `replace_previous` means the learner was still talking when the last
+        reply was ready: that exchange was half a sentence, so it is dropped and
+        this turn — the whole sentence — takes its place.
+        """
+        if replace_previous:
+            self._drop_last_exchange()
         t0 = time.time()
         if text is None:
             if not audio_path:
@@ -177,6 +184,16 @@ class Tutor:
                     level=self.level, followup_text=spoken2,
                     followup_audio=audio2, ms_stt=ms_stt, ms_llm=ms_llm,
                     ms_tts=ms_tts)
+
+    def _drop_last_exchange(self) -> None:
+        """Forget the last user/assistant pair — its learner message was a
+        fragment that the incoming turn replaces."""
+        if (len(self.history) >= 4
+                and self.history[-1]["role"] == "assistant"
+                and self.history[-2]["role"] == "user"):
+            del self.history[-2:]
+            # back to system + "Topic: … Start" = the pre-session state
+            self.awaiting_confidence = len(self.history) == 2
 
     # ── written session summary ──────────────────────────────────────────
     def summary(self) -> str:

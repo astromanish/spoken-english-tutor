@@ -155,11 +155,13 @@ class Handler(BaseHTTPRequestHandler):
         text = None
 
         stt_ms = 0
+        replace = False
         if ctype == "application/json":
             try:
                 payload = json.loads(raw or b"{}")
                 text = (payload.get("text") or "").strip() or None
                 stt_ms = int(payload.get("stt_ms") or 0)
+                replace = bool(payload.get("replace_previous"))
             except (ValueError, TypeError, AttributeError):
                 return self._json({"error": "Malformed JSON body."},
                                   HTTPStatus.BAD_REQUEST)
@@ -180,7 +182,8 @@ class Handler(BaseHTTPRequestHandler):
             if tutor is None:
                 return self._json({"error": "Press Start first."},
                                   HTTPStatus.CONFLICT)
-            turn = tutor.turn(audio_path=audio_path, text=text, stt_ms=stt_ms)
+            turn = tutor.turn(audio_path=audio_path, text=text, stt_ms=stt_ms,
+                              replace_previous=replace)
             try:
                 with open(turn.audio_path, "rb") as f:
                     token = remember_audio(f.read())

@@ -76,6 +76,12 @@ let turnChain = Promise.resolve();
 const audioQueue = [];
 let earError = ''; // the real reason the mic did not open, for the retry hint
 
+/* Continuation and barge-in bookkeeping lives in turns.js (DOM-free, tested):
+   a reply that lands while he is still talking is held, his fragment is
+   carried forward, and the next utterance is sent as one merged turn. */
+const turns = new TurnCoordinator();
+let heldReply = null; // { token, data } — received, not played
+
 /* ── view ───────────────────────────────────────────────────────────────── */
 
 const STATE_TEXT = {
@@ -258,6 +264,7 @@ function pump() {
   const url = audioQueue.shift();
   if (!url) {
     speaking = false;
+    if (stateName === 'hearing') return paintSenses(); // he is mid-sentence
     if (started) setState(muted ? 'muted' : 'listening');
     else paintSenses();
     return;
@@ -275,7 +282,7 @@ function pump() {
 
 function enqueueAudio(url) {
   if (!url) {
-    if (!audioQueue.length && !playing) {
+    if (!audioQueue.length && !playing && stateName !== 'hearing') {
       speaking = false;
       if (started) setState(muted ? 'muted' : 'listening');
     }
@@ -292,6 +299,12 @@ els.player.addEventListener('ended', () => {
     return;
   }
   speaking = false;
+  // he cut her off and is talking: stay on "hearing", do not fall back to
+  // "listening" the instant her file stops
+  if (stateName === 'hearing') {
+    paintSenses();
+    return;
+  }
   if (started) setState(muted ? 'muted' : 'listening');
   else paintSenses();
 });
@@ -483,9 +496,15 @@ function onBlock(samples, rate) {
   const event = watcher.push(rms, blockMs, performance.now(), speaking || playing);
 
   if (event === 'speech-start') {
-    // she stops mid-sentence, the ear stays open
-    if (speaking || playing) bargeIn();
-    else setState('hearing');
+    const action = turns.onSpeechStart(stateName);
+    if (action === 'barge') {
+      bargeIn(); // she stops mid-sentence, the ear stays open
+    } else if (action === 'supersede') {
+      // she had not started answering yet: whatever he said before was half a
+      // sentence, so her reply is held and his words carry into the next turn
+      setStatus('You kept going — she will answer the whole sentence');
+    }
+    setState('hearing');
   }
 
   stream.pending.push(toPcm16(samples, rate));
@@ -499,10 +518,22 @@ async function finalizeUtterance() {
   try {
     const { text, stt_ms, blob } = await closeStream();
     if (started && !muted) openStream(); // the ear is never closed for long
-    if (text) {
-      setCap('you', text);
-      queueTurn(() => runTurn({ text, stt_ms: stt_ms || 0 }));
+
+    const step = turns.onUtterance(text);
+    if (step && step.restore !== undefined) {
+      // the "continuation" was a cough: play the answer that was held back
+      setCap('you', '');
+      playHeld(step.restore);
+      return;
+    }
+    if (step) {
+      setCap('you', step.text);
+      if (step.replace) setStatus('Whole sentence sent — answering that, not the fragment');
+      queueTurn(() => runTurn({
+        text: step.text, stt_ms: stt_ms || 0, token: step.token, replace: step.replace,
+      }));
     } else if (blob && blob.size) {
+      // audio-only fallback: the words are the server's to find, so no merging
       queueTurn(() => runTurn({ blob }));
     } else {
       setState('listening', 'Nothing heard — go ahead whenever you are ready');
@@ -523,7 +554,7 @@ function queueTurn(worker) {
   return turnChain;
 }
 
-async function runTurn({ text, stt_ms, blob }) {
+async function runTurn({ text, stt_ms, blob, token, replace }) {
   setState('thinking');
   let data;
   if (blob) {
@@ -535,9 +566,24 @@ async function runTurn({ text, stt_ms, blob }) {
     data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `Turn failed (${res.status})`);
   } else {
-    data = await postJson('/api/turn', { text, stt_ms: stt_ms || 0 });
+    data = await postJson('/api/turn', {
+      text,
+      stt_ms: stt_ms || 0,
+      replace_previous: Boolean(replace),
+    });
   }
 
+  const verdict = token ? turns.onReply(token) : 'play';
+  if (verdict === 'hold') {
+    // he is still talking: keep the answer, do not speak over him
+    heldReply = { token, data };
+    return;
+  }
+  showReply(data);
+}
+
+/** Her answer, out loud: captions, level, timings, then the audio queue. */
+function showReply(data) {
   if (data.heard) setCap('you', data.heard);
   setCap('tutor', data.reply2 ? `${data.reply} ${data.reply2}` : data.reply);
   setBadge(data);
@@ -546,6 +592,15 @@ async function runTurn({ text, stt_ms, blob }) {
   enqueueAudio(data.audio);
   if (data.audio2) audioQueue.push(data.audio2); // question after the correction
   if (!data.audio) setState('listening');
+}
+
+/** Nothing was actually said after all — she gets her held answer now. */
+function playHeld(token) {
+  if (!heldReply || heldReply.token !== token) return;
+  const { data } = heldReply;
+  heldReply = null;
+  turns.settle(token);
+  showReply(data);
 }
 
 function reportWarning(data) {
@@ -587,6 +642,8 @@ async function startSession() {
   els.summary.innerHTML = '';
   els.metric.textContent = '';
   audioQueue.length = 0;
+  turns.reset();
+  heldReply = null;
   setState('connecting');
 
   try {
@@ -661,6 +718,8 @@ async function endSession() {
     speaking = false;
     try { els.player.pause(); } catch (e) { /* not playing */ }
     muted = true;
+    turns.reset();
+    heldReply = null;
     await stopEar();
     const data = await postJson('/api/summary');
     // markdown() escapes every line before it builds tags, so model output

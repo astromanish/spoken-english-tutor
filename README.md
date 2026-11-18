@@ -65,13 +65,22 @@ Everything the browser does each ~256 ms block of microphone audio:
   so the ear is never shut while she thinks or speaks.
 - **Barge-in** → talking while she is speaking is detected at a higher gate
   (0.05 RMS, versus 0.018 when she is quiet) and cuts her playback instead of
-  waiting for her to finish.
+  waiting for her to finish; the ear stays open and the UI stays on *hearing*
+  until he stops.
+- **A pause mid-sentence does not split the turn** → if he starts talking again
+  while she is still *thinking* (before any of her answer has been heard), that
+  answer is held, not spoken over him, and his fragment is carried into the next
+  turn — which goes out as one sentence with `replace_previous: true`, so the
+  server drops the half-sentence from her history instead of correcting it
+  twice. If the "continuation" turns out to be a cough, the held answer is
+  played after all: no turn is ever lost.
 
 The rule lives in `static/vad.js` as a DOM-free `TurnWatcher`, so it can be
 tested without a microphone:
 
 ```bash
-node --test                # 6 tests: the 2 s edge, coughs, room noise, echo
+node --test                # 13 tests: the 2 s edge, coughs, room noise, echo,
+                           #            barge-in vs continuation merge, held replies
 ```
 
 Thresholds were measured, not guessed: Bulbul speech sits around 0.09 RMS, a
@@ -227,6 +236,7 @@ server.py      HTTP server + JSON API (stdlib, no framework)
 realtime.py    live transcription: PCM in over HTTP, one websocket to Saaras
 static/        index.html, style.css, app.js — the whole voice UI
 static/vad.js  turn-taking: silence → turn, barge-in — DOM-free, node-tested
+static/turns.js continuation + barge-in bookkeeping (merge, hold, replace)
 tests/         `node --test` — the silence rule and its edge cases
 tutor.py       session state, tutor prompt, turn handling, summary
 sarvam.py      the three Sarvam API clients + audio helpers
