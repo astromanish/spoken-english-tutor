@@ -102,6 +102,34 @@ quiet room near 0.002, and digital silence at 0.0 — a 40× margin under the
 gate. `echoCancellation`, `noiseSuppression` and `autoGainControl` are all on
 for the mic, which is what keeps her own voice out of the turn-taking.
 
+## Latency
+
+Measured against the live API from this machine (`bulbul:v3`, en-IN, one speaker):
+
+| text | characters | new connection | pooled | audio | bytes @22 k |
+|---|---|---|---|---|---|
+| "What time do you reach office?" | 30 | 0.81 s | 0.70 s | 2.6 s | 87 KB |
+| corrected sentence + Hinglish line | 110 | 2.46 s | 1.86 s | 5.4 s | 290 KB |
+| two-clause correction | 240 | 4.29 s | 3.35 s | 15.0 s | 527 KB |
+
+Synthesis is roughly **linear in characters** (≈14–23 s per 1 000 characters), so
+the cost is the explanation, not the network. Four things follow:
+
+- **Pooled connections.** A fresh TLS handshake per call cost 0.15–0.95 s, and a
+  turn makes two calls → `requests.Session` with an HTTPAdapter.
+- **16 kHz instead of Bulbul's 22.05 kHz default** via `speech_sample_rate`:
+  376 KB instead of 592 KB for the same sentence, and 0.5 s quicker. The browser
+  does not need the extra bandwidth.
+- **Cap the spoken explanation** at 20 words in the prompt: the Hinglish
+  correction is the longest thing she says, and every word is synthesis time.
+- **ffmpeg is not the problem** — re-encoding a 15 s reply takes 0.07 s. It stays
+  because STT needs a deterministic format, not for speed.
+
+Together that moved a turn from 3.4–6.6 s to a median **2.6 s (llm 0.35 s, tts
+2.2 s)**. The remaining win is streaming: Bulbul can emit audio over a websocket,
+and playing the first sentence while the second is still being synthesised
+removes most of the wait the learner actually feels.
+
 ## Deploying
 
 The app is one long-lived Python process: sessions in memory, one Sarvam

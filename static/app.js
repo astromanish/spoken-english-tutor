@@ -84,13 +84,13 @@ let heldReply = null; // { token, data } — received, not played
 /* ── view ───────────────────────────────────────────────────────────────── */
 
 const STATE_TEXT = {
-  idle: 'Idle',
+  idle: '',
   connecting: 'Connecting — she speaks first…',
-  listening: 'Ear on — speak whenever you like',
+  listening: 'Mic on — speak whenever you like',
   hearing: 'Hearing you — she takes the turn after half a second of quiet',
   thinking: 'Thinking…',
   speaking: 'She is speaking — talk over her any time',
-  muted: 'Ear off — nothing is being recorded',
+  muted: 'Mic off — nothing is being recorded',
   ended: 'Session ended',
 };
 
@@ -787,4 +787,4 @@ els.mic.addEventListener('click', toggleEar);
 els.end.addEventListener('click', endSession);
 
 loadMeta();
-setState('idle', 'Press Start — her ear opens and she speaks first');
+setState('idle');   // the stage starts quiet: no instruction to read
