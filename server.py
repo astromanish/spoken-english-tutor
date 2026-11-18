@@ -17,6 +17,7 @@ import mimetypes
 import os
 import tempfile
 import threading
+import time
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,6 +32,8 @@ HOST = os.environ.get("TUTOR_HOST", "0.0.0.0" if os.environ.get("PORT") else "12
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(HERE, "static")
+
+_STARTED = time.time()
 
 AUDIO_SUFFIX = {
     "audio/webm": ".webm",
@@ -111,6 +114,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._file(os.path.join(STATIC, path[len("/static/"):]))
         if path.startswith("/audio/"):
             return self._audio_file(path[len("/audio/"):])
+        if path == "/api/version":
+            # what is actually running — Render sets RENDER_GIT_COMMIT
+            return self._json({
+                "commit": (os.environ.get("RENDER_GIT_COMMIT")
+                           or os.environ.get("GIT_COMMIT") or "local"),
+                "pid": os.getpid(),
+                "started_at": int(_STARTED),
+            })
         if path == "/api/meta":
             return self._json({
                 "topics": TOPICS,
