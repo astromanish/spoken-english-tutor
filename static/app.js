@@ -110,6 +110,7 @@ function paintSenses() {
   els.earState.textContent = !started ? 'off' : muted ? 'off' : hearing ? 'hearing' : 'on';
 
   els.senseMouth.classList.toggle('on', speaking);
+  els.senseMouth.classList.toggle('speaking', speaking); // lips part while she talks
   els.mouthState.textContent = speaking ? 'speaking' : 'ready';
 }
 

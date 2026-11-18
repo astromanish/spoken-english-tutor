@@ -280,32 +280,82 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .sense {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 4px 10px;
+  background: #fff;
+  padding: 3px 13px 3px 3px;
 }
 
-.sense svg {
-  width: 15px;
-  height: 15px;
+/* each sense gets its own tinted disc, so ear and mouth read apart at a glance */
+.sense .ico {
+  --disc: #f0f0ec; /* the disc colour doubles as the "teeth gap" in the mouth */
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--disc);
+  color: var(--muted);
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+.sense .ico svg { width: 17px; height: 17px; display: block; }
+
+/* icon primitives — stroke for the drawing, fl for the tinted fill */
+svg .st {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: 1.6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
+svg .fl { fill: currentColor; stroke: none; opacity: 0.16; }
+svg .seam { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; opacity: 0.5; }
+svg .cav { fill: currentColor; stroke: none; opacity: 0.95; } /* a solid cavity is what makes it read as OPEN at 17px */
+svg .teeth { fill: none; stroke: var(--disc, #f0f0ec); stroke-width: 1.7; stroke-linecap: round; }
+svg .wave { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; opacity: 0.85; }
+
 .sense b { font-weight: 600; color: var(--ink); }
 
 .sense.on { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
+.sense.on .ico { --disc: #dcebe2; color: var(--accent); }
 .sense.on b { color: var(--accent); }
 .sense.hot { border-color: #f0cdc9; color: var(--live); background: #fdf1f0; }
+.sense.hot .ico { --disc: #f9dcd7; color: var(--live); }
+.sense.hot .ico { animation: earPulse 1.3s ease-in-out infinite; }
 .sense.hot b { color: var(--live); }
+.sense.off .ico { --disc: #eaeae6; }
 .sense.off b { color: var(--muted); }
+
+/* the mouth opens while she talks */
+#senseMouth .m-open { display: none; }
+#senseMouth.speaking .m-closed { display: none; }
+#senseMouth.speaking .m-open { display: block; }
+#senseMouth.speaking .m-open .cav { animation: lip 620ms ease-in-out infinite; }
+/* the sound waves breathe while she talks, so "speaking" needs no label */
+#senseMouth.speaking .m-open .w1 { animation: wave 900ms ease-in-out infinite; }
+#senseMouth.speaking .m-open .w2 { animation: wave 900ms ease-in-out 180ms infinite; }
+
+/* the mouth moves while she talks; the ear breathes while it hears */
+@keyframes lip {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 1; }
+}
+
+@keyframes wave {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes earPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
 
 /* ── captions ──────────────────────────────────────────────────────────── */
 
@@ -370,13 +420,8 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .toggle:hover:not(:disabled) { background: #eaf1ed; }
 
 .toggle-icon svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  width: 19px;
+  height: 19px;
   display: block;
 }
 
@@ -428,6 +473,6 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orb-ring, .bars i { animation: none !important; }
+  .orb-ring, .bars i, .sense .ico, #senseMouth .m-open .cav, #senseMouth .m-open .wave { animation: none !important; }
   .orb-core { transition: none; }
 }

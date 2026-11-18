@@ -12,7 +12,7 @@
 <body>
 <main>
   <header class="masthead">
-    <p class="eyebrow">Role Playing English Language Tutor</p>
+    <p class="eyebrow">Role Playing Spoken English Tutor</p>
     <h1>Priyanka</h1>
     <p class="lede">
       Pick a scenario and press <strong>Start</strong>. Her ear is on the whole time —
@@ -48,11 +48,30 @@
       </div>
       <div class="senses">
         <span class="sense" id="senseEar">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20.5a4.5 4.5 0 0 0 4.5-4.5v-1.4"/><path d="M6.2 10.5a5.8 5.8 0 1 1 11.6 0c0 3-2.1 3.9-2.1 6.6a4.2 4.2 0 0 1-7.5 2.4"/><path d="M9.6 10.6a2.4 2.4 0 0 1 4.8 0"/></svg>
+          <span class="ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path class="fl" d="M9.8 9.4a2.3 2.3 0 0 1 4.6-.2c0 1.6-1 1.9-1 3.1a1.8 1.8 0 0 1-3.5.7 1.9 1.9 0 0 1-.1-3.6Z"/>
+              <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
+              <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
+            </svg>
+          </span>
           <span>Ear <b id="earState">off</b></span>
         </span>
         <span class="sense" id="senseMouth">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 11.4c2.7-2.1 5.6-3.1 8.4-3.1s5.7 1 8.4 3.1c-2.7 2.6-5.6 3.9-8.4 3.9s-5.7-1.3-8.4-3.9Z"/><path d="M9 9c1 1 2 1.5 3 1.5"/></svg>
+          <span class="ico" aria-hidden="true">
+            <svg class="m-closed" viewBox="0 0 24 24">
+              <path class="fl" d="M3.4 12.1c2-2.4 4.4-2.8 5.8-1.7 1 .8 1.7 1.2 2.8 1.2s1.8-.4 2.8-1.2c1.4-1.1 3.8-.7 5.8 1.7-2 3.1-5.1 4.9-8.6 4.9s-6.6-1.8-8.6-4.9Z"/>
+              <path class="st" d="M3.4 12.1c2-2.4 4.4-2.8 5.8-1.7 1 .8 1.7 1.2 2.8 1.2s1.8-.4 2.8-1.2c1.4-1.1 3.8-.7 5.8 1.7-2 3.1-5.1 4.9-8.6 4.9s-6.6-1.8-8.6-4.9Z"/>
+              <path class="seam" d="M3.4 12.1h17.2"/>
+            </svg>
+            <svg class="m-open" viewBox="0 0 24 24">
+              <path class="st" d="M2.6 10.9c1.6-1.4 3.6-2.1 6-2.1s4.4.7 6 2.1c-1.2 4.3-3.2 6.5-6 6.5s-4.8-2.2-6-6.5Z"/>
+              <path class="cav" d="M4.1 11.2c1.5-.8 3-.1 4.5-.1s3-.7 4.5.1c-1.1 3-2.6 4.6-4.5 4.6s-3.4-1.6-4.5-4.6Z"/>
+              <path class="teeth" d="M4.6 11.9h8.2"/>
+              <path class="wave w1" d="M17.6 9.5a4.6 4.6 0 0 1 0 5.6"/>
+              <path class="wave w2" d="M20.4 7.8a8 8 0 0 1 0 9"/>
+            </svg>
+          </span>
           <span>Mouth <b id="mouthState">ready</b></span>
         </span>
       </div>
@@ -72,8 +91,16 @@
     <div class="controls">
       <button id="mic" class="toggle" aria-pressed="true" disabled>
         <span class="toggle-icon" aria-hidden="true">
-          <svg class="ico-on" viewBox="0 0 24 24"><path d="M12 4.5a2.6 2.6 0 0 1 2.6 2.6v5a2.6 2.6 0 0 1-5.2 0v-5A2.6 2.6 0 0 1 12 4.5Z"/><path d="M6.5 11.2a5.5 5.5 0 0 0 11 0"/><path d="M12 16.7V20"/></svg>
-          <svg class="ico-off" viewBox="0 0 24 24"><path d="M4 4l16 16"/><path d="M15.5 15a5.5 5.5 0 0 1-9-3.8"/><path d="M9.4 4.9A2.6 2.6 0 0 1 14.6 6v3.2"/><path d="M12 16.7V20"/></svg>
+          <svg class="ico-on" viewBox="0 0 24 24">
+            <path class="fl" d="M9.8 9.4a2.3 2.3 0 0 1 4.6-.2c0 1.6-1 1.9-1 3.1a1.8 1.8 0 0 1-3.5.7 1.9 1.9 0 0 1-.1-3.6Z"/>
+            <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
+            <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
+          </svg>
+          <svg class="ico-off" viewBox="0 0 24 24">
+            <path class="st" d="M6.2 9.4a6.2 6.2 0 1 1 12.4-.2c0 5.2-5.4 5.6-5.9 8.8a3.4 3.4 0 0 1-6.3 1.9"/>
+            <path class="st" d="M14.4 9.2a2.3 2.3 0 0 0-4.6.2v.9a1.9 1.9 0 1 1 .1 3.8"/>
+            <path class="st" d="M4.8 20.2 19.2 3.8"/>
+          </svg>
         </span>
         <span id="micLabel">Mute ear</span>
       </button>
