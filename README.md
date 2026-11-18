@@ -98,6 +98,34 @@ quiet room near 0.002, and digital silence at 0.0 — a 40× margin under the
 gate. `echoCancellation`, `noiseSuppression` and `autoGainControl` are all on
 for the mic, which is what keeps her own voice out of the turn-taking.
 
+## Deploying
+
+The app is one long-lived Python process: sessions in memory, one Sarvam
+websocket per recording, audio kept in a dict. That is a *server*, and it rules
+out pure serverless hosts.
+
+**Render — free, no Docker.** Push the repo, then *New → Blueprint* and pick this
+repository: `render.yaml` builds `pip install -r requirements.txt` and starts
+`python server.py`. Add `SARVAM_API_KEY` in the dashboard when it asks. The free
+plan sleeps after ~15 idle minutes, so the first visitor waits ~30 s for a cold
+start.
+
+**Any container host** (Fly, Railway, Cloud Run, a VPS):
+`docker build -t priyanka . && docker run -p 7860:7860 -e SARVAM_API_KEY=… priyanka`.
+The `Dockerfile` installs ffmpeg, which the audio normalisation needs.
+
+**Netlify cannot run this app.** The only Netlify primitive that fits is
+[Netlify Server](https://docs.netlify.com/build/server/) — long-lived, holds
+websockets, keeps state — and it refuses a Free plan with
+`422 Netlify Server is only available on credit-based plans`. Netlify Functions
+are JS/TS only, cannot hold the Sarvam websocket across a request, and have no
+ffmpeg, so a Netlify build would need a JS rewrite *and* would lose the live
+transcript.
+
+Sessions are per browser (a `priyanka_sid` cookie), so a shared URL gives each
+visitor their own tutor. There is no auth: anyone with the link spends the Sarvam
+key's free tier, so keep the URL to people you know.
+
 ## Why these models
 
 - **Saaras v3 (STT)** — built for Indian languages and code-switching. A

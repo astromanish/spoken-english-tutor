@@ -1,0 +1,17 @@
+# Render Blueprint — one click from the repo, no Docker, no rewrite.
+# The app is a single long-lived Python process (in-memory sessions + a websocket
+# to Sarvam per recording), which is exactly what a web service gives you.
+services:
+  - type: web
+    name: priyanka-tutor
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /api/meta
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.13"
+      # set the key in the Render dashboard — never in the repo
+      - key: SARVAM_API_KEY
+        sync: false
