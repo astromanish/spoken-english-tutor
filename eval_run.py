@@ -86,7 +86,7 @@ def run() -> dict:
             raw = tutor.history[-1]["content"]
             ok, reason = judge(text, raw, expectation)
             row = {
-                "n": i, "said": text, "heard": turn.heard, "tutor": turn.spoken_text,
+                "n": i, "said": text, "heard": turn.heard, "tutor": turn.full_text,
                 "expected": expectation, "pass": ok, "reason": reason,
                 "level": turn.level, "ms_stt": turn.ms_stt, "ms_llm": turn.ms_llm,
                 "ms_tts": turn.ms_tts, "ms_total": turn.ms_total, "ms_wall": wall,

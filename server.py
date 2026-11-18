@@ -166,16 +166,23 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with open(turn.audio_path, "rb") as f:
                     token = remember_audio(f.read())
+                token2 = ""
+                if turn.followup_audio:      # the question, asked separately
+                    with open(turn.followup_audio, "rb") as f:
+                        token2 = remember_audio(f.read())
             finally:
-                _unlink(audio_path)      # the recording — held in memory now
-                _unlink(turn.audio_path)  # the reply WAV — read above
+                _unlink(audio_path)          # the recording — held in memory now
+                _unlink(turn.audio_path)     # the reply WAV — read above
+                _unlink(turn.followup_audio)
             self._json({
                 "heard": turn.heard,
                 "reply": turn.spoken_text,
+                "reply2": turn.followup_text,
                 "level": turn.level,
                 "level_name": LEVELS.get(turn.level, "?"),
                 "awaiting_confidence": tutor.awaiting_confidence,
                 "audio": f"/audio/{token}.wav",
+                "audio2": f"/audio/{token2}.wav" if token2 else "",
                 "timings": {
                     "stt": turn.ms_stt,
                     "llm": turn.ms_llm,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 import sarvam
@@ -36,11 +37,19 @@ FROM HIS CONFIDENCE ANSWER: do not correct his sentence here — he is telling y
 LANGUAGE RULES — the core of your job:
 0. Before replying, read his sentence once for grammar and word-choice mistakes. If it has any, correct them — even when he also asks a question. Never answer "good" to a sentence that contains a mistake.
 1. Everything you say as the character is ENGLISH ONLY: short, natural, one question at a time, under 45 words, always on the topic.
-2. When he makes a grammar or word-choice mistake, reply in this order:
-   EN: <one English line that responds naturally to him — you may quote the corrected sentence, e.g. EN: You should say "He goes to school daily." What time do you reach office? >
+2. When he makes a grammar or word-choice mistake, split your reply into TWO separate messages. The correction must stand on its own — no question inside it.
+   FIRST MESSAGE — the correction and nothing else:
+   EN: <the corrected sentence in double quotes, e.g. EN: You should say "He goes to school daily.">
    HI: <one HINGLISH line saying what was wrong and why. Hinglish = Hindi written in Roman script, mixed with English words, e.g. "'He go' ki jagah 'He goes' bolna chahiye, kyunki he ke saath 's' lagta hai.">
    Quote the FULL corrected sentence in double quotes on its OWN EN: line — never leave it only inside the HI: line — and cover every mistake in his sentence, but keep the explanation to one HI: line.
-3. If he is stuck (replies in Hindi/Hinglish, says he does not understand, or asks for help): unblock him on a HI: line in Hinglish, give him the English sentence to say on an EN: line, then continue the role-play with the next question.
+   Then a line containing only:
+   NEXT:
+   SECOND MESSAGE — your question to him, and nothing else, e.g.:
+   EN: What time do you reach office?
+   Never ask a question in the correction message, and never put the correction in the second message.
+   The same two-message split applies when you hand him a sentence to repeat because he is stuck: sentence first, question after NEXT:.
+   When there is nothing to correct, reply as ONE message with no NEXT: line.
+3. If he is stuck (replies in Hindi/Hinglish, says he does not understand, or asks for help): unblock him on a HI: line in Hinglish and give him the English sentence to say on an EN: line — that message ends there. Put the next question after a line containing only NEXT:.
 4. When he answers well, respond in English as your character: first react to what he actually said (agree, comment on it, ask a follow-up about THAT), then move the conversation forward with your next question — it must connect to what he just said, not to an unrelated interview question. If his sentence has no mistake, just continue — never invent a correction where there is none.
 4b. When he says he is nervous, stuck or asks what he should say, give him one short English sentence he can use, in double quotes, on an EN: line.
 5. Adapt to the level you set from his confidence answer; raise or lower it as he improves or struggles, and report it on a LEVEL: line each turn.
@@ -49,7 +58,8 @@ LANGUAGE RULES — the core of your job:
 OUTPUT FORMAT — only these line types, in the order you want them spoken:
 EN: <English line>
 HI: <Hinglish line — only when there is a correction or he is stuck>
-LEVEL: <1, 2 or 3 — your current judgement>"""
+NEXT: <on a line of its own — starts the second message; omit it entirely when there is nothing to correct>
+LEVEL: <1, 2 or 3 — your current judgement, at the very end>"""
 
 SUMMARY_PROMPT = """You are a spoken-English tutor writing the end-of-session summary for a Hindi-speaking learner.
 Using only the conversation below, write Markdown with exactly these three sections and these headings:
@@ -77,9 +87,11 @@ Nothing else."""
 @dataclass
 class Turn:
     heard: str            # what STT heard
-    spoken_text: str      # what the tutor says (markers stripped)
-    audio_path: str       # concatenated reply audio
+    spoken_text: str      # first message (markers stripped) — the correction
+    audio_path: str       # first message audio
     level: int
+    followup_text: str = ""     # second message — the question, asked after
+    followup_audio: str = ""    # second message audio ("" when not split)
     ms_stt: int = 0
     ms_llm: int = 0
     ms_tts: int = 0
@@ -87,6 +99,11 @@ class Turn:
     @property
     def ms_total(self) -> int:
         return self.ms_stt + self.ms_llm + self.ms_tts
+
+    @property
+    def full_text(self) -> str:
+        """Both messages, for logs and the eval table."""
+        return " ".join(p for p in (self.spoken_text, self.followup_text) if p)
 
 
 @dataclass
@@ -130,17 +147,35 @@ class Tutor:
         self._push("assistant", raw)
         self.awaiting_confidence = False   # his first answer has been taken
 
-        segments, spoken = _parse_reply(raw)
+        # A correction and the question that follows it travel as two
+        # messages: the learner hears the fix before he is asked anything.
+        first_raw, second_raw = split_reply(raw)
+        segments, spoken = _parse_reply(first_raw)
+        seg2, spoken2 = (_parse_reply(second_raw) if second_raw.strip()
+                         else ([], ""))
+        if not segments and seg2:
+            # the model put everything after NEXT: — keep it as one message
+            segments, spoken, seg2, spoken2 = seg2, spoken2, [], ""
         new_level = _parse_level(raw, self.level)
         if new_level != self.level:
             self.level = new_level
 
         t2 = time.time()
-        audio_out = sarvam.speak_mixed(segments)
+        if seg2:
+            # synthesise both messages together: the turn costs the slower of
+            # the two, not the sum
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                first = pool.submit(sarvam.speak_mixed, segments)
+                second = pool.submit(sarvam.speak_mixed, seg2)
+                audio_out, audio2 = first.result(), second.result()
+        else:
+            audio_out, audio2 = sarvam.speak_mixed(segments), ""
         ms_tts = int((time.time() - t2) * 1000)
 
         return Turn(heard=heard, spoken_text=spoken, audio_path=audio_out,
-                    level=self.level, ms_stt=ms_stt, ms_llm=ms_llm, ms_tts=ms_tts)
+                    level=self.level, followup_text=spoken2,
+                    followup_audio=audio2, ms_stt=ms_stt, ms_llm=ms_llm,
+                    ms_tts=ms_tts)
 
     # ── written session summary ──────────────────────────────────────────
     def summary(self) -> str:
@@ -170,9 +205,27 @@ def _lang_for(text: str) -> str:
     """
     return "hi-IN" if DEVANAGARI.search(text) else "en-IN"
 
+def split_reply(raw: str) -> tuple[str, str]:
+    """Split a reply at the `NEXT:` marker into (first message, second message).
+
+    A correction and the question that follows it must reach the learner as two
+    separate messages, so the model marks the break with a line of its own.
+    Returns ("", "") halves as ("everything", "") when the marker is absent.
+    """
+    m = re.search(r"^\s*NEXT\s*:\s*(.*)$", raw, re.IGNORECASE | re.MULTILINE)
+    if not m:
+        return raw, ""
+    return raw[:m.start()], (m.group(1) + raw[m.end():])
+
+
 def plain_reply(raw: str) -> str:
-    """Human-readable text of a model reply (markers stripped)."""
-    return _parse_reply(raw)[1]
+    """Human-readable text of a model reply (markers stripped).
+
+    Both halves are joined — a greeting is one message even if the model
+    emitted a NEXT: line.
+    """
+    first, second = split_reply(raw)
+    return " ".join(p for p in (_parse_reply(first)[1], _parse_reply(second)[1]) if p)
 
 
 def _parse_reply(raw: str) -> tuple[list[tuple[str, str]], str]:

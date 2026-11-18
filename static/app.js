@@ -140,12 +140,33 @@ function setBusy(on) {
   els.mic.disabled = on;
 }
 
-function play(url) {
+/* Two messages play in order: the correction first, then the question, so
+   the learner hears the fix before he is asked anything. */
+let nextAudio = null;
+
+function playOne(url) {
   els.player.src = url;
   els.player.play().catch(() => {
     /* autoplay blocked or decode error — the transcript still has the text */
   });
 }
+
+function play(url, url2) {
+  nextAudio = url2 || null;
+  if (url) return playOne(url);
+  if (nextAudio) {
+    const n = nextAudio;
+    nextAudio = null;
+    playOne(n);
+  }
+}
+
+els.player.addEventListener('ended', () => {
+  if (!nextAudio) return;
+  const n = nextAudio;
+  nextAudio = null;
+  playOne(n);
+});
 
 function timings(t) {
   const s = (ms) => (ms / 1000).toFixed(1);
@@ -221,8 +242,9 @@ async function runTurn(request) {
 
     addMessage('user', data.heard);
     addMessage('tutor', data.reply);
+    if (data.reply2) addMessage('tutor', data.reply2); // the question, after
     setBadgeFrom(data);
-    play(data.audio);
+    play(data.audio, data.audio2);
     setStatus(timings(data.timings));
   } catch (e) {
     setStatus(`⚠️ ${e.message}`, true);
