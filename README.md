@@ -71,7 +71,7 @@ The rule lives in `static/vad.js` as a DOM-free `TurnWatcher`, so it can be
 tested without a microphone:
 
 ```bash
-node --test tests/         # 6 tests: the 2 s edge, coughs, room noise, echo
+node --test                # 6 tests: the 2 s edge, coughs, room noise, echo
 ```
 
 Thresholds were measured, not guessed: Bulbul speech sits around 0.09 RMS, a
@@ -227,7 +227,7 @@ server.py      HTTP server + JSON API (stdlib, no framework)
 realtime.py    live transcription: PCM in over HTTP, one websocket to Saaras
 static/        index.html, style.css, app.js — the whole voice UI
 static/vad.js  turn-taking: silence → turn, barge-in — DOM-free, node-tested
-tests/         node --test tests/ — the silence rule and its edge cases
+tests/         `node --test` — the silence rule and its edge cases
 tutor.py       session state, tutor prompt, turn handling, summary
 sarvam.py      the three Sarvam API clients + audio helpers
 eval_run.py    scripted evaluation → eval/results.{json,md}
