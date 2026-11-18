@@ -48,7 +48,8 @@ character rather than by name — *Warm female · Calm female · Young female ·
 Professional male · Mature male* — because the tutor is Priyanka either way; the
 choice is how she sounds, not who she is. **Preview** speaks a two-line sample in
 that voice (one English line, one Hinglish line, so you hear both before
-committing). The pick is remembered in `localStorage` and travels with the
+committing) — and the sample introduces itself as **Priyanka** for the female
+voices and **Priyank** for the male ones. The pick is remembered in `localStorage` and travels with the
 session as a `speaker` field; an unknown or retired one falls back to the default
 rather than failing the start.
 

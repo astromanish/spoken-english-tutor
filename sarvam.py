@@ -34,13 +34,19 @@ TTS_SPEAKER = "shreya"   # bulbul:v3 default for this app
 # range and described by character instead of by name — the tutor is Priyanka, so
 # each option is a voice she can wear, not a different person.
 SPEAKERS: list[dict] = [
-    {"id": "priya", "label": "Warm female"},
-    {"id": "shreya", "label": "Calm female"},
-    {"id": "tanya", "label": "Young female"},
-    {"id": "rahul", "label": "Professional male"},
-    {"id": "vijay", "label": "Mature male"},
+    {"id": "priya", "label": "Warm female", "gender": "female"},
+    {"id": "shreya", "label": "Calm female", "gender": "female"},
+    {"id": "tanya", "label": "Young female", "gender": "female"},
+    {"id": "rahul", "label": "Professional male", "gender": "male"},
+    {"id": "vijay", "label": "Mature male", "gender": "male"},
 ]
+GENDERS = {sp["id"]: sp["gender"] for sp in SPEAKERS}
 SPEAKER_IDS = {sp["id"] for sp in SPEAKERS}
+
+
+def gender_of(speaker: str | None) -> str:
+    """The chosen voice's gender — the preview introduces herself/himself by name."""
+    return GENDERS.get(speaker_or_default(speaker), "female")
 
 
 def speaker_or_default(name: str | None) -> str:

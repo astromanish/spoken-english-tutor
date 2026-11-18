@@ -249,22 +249,31 @@ class Handler(BaseHTTPRequestHandler):
             })
 
     # Two lines, so the picker can be judged on English and on Hinglish before
-    # a session starts — the voice has to handle both.
-    PREVIEW_SEGMENTS = [
-        ("en-IN", "Hi, I am Priyanka, and I will help you speak English."),
-        ("en-IN", "Chaliye shuru karein — aap bas bolna shuru kijiye."),
-    ]
+    # a session starts — the voice has to handle both. The name follows the
+    # voice: a male speaker introduces himself as Priyank.
+    PREVIEW_HINGLISH = "Chaliye shuru karein — aap bas bolna shuru kijiye."
+    NAMES = {"female": "Priyanka", "male": "Priyank"}
 
     def _preview(self):
         speaker = sarvam.speaker_or_default(
             (self._body_json() or {}).get("speaker"))
-        path = sarvam.speak_mixed(self.PREVIEW_SEGMENTS, speaker)
+        name = self.NAMES.get(sarvam.gender_of(speaker), "Priyanka")
+        segments = [
+            ("en-IN", f"Hi, I am {name}, and I will help you speak English."),
+            ("en-IN", self.PREVIEW_HINGLISH),
+        ]
+        path = sarvam.speak_mixed(segments, speaker)
         try:
             with open(path, "rb") as f:
                 token = remember_audio(f.read())
         finally:
             _unlink(path)
-        self._json({"speaker": speaker, "audio": f"/audio/{token}.wav"})
+        self._json({
+            "speaker": speaker,
+            "name": name,
+            "text": " ".join(text for _, text in segments),
+            "audio": f"/audio/{token}.wav",
+        })
 
     def _summary(self):
         with _lock:
