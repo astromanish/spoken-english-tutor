@@ -184,6 +184,8 @@ class Handler(BaseHTTPRequestHandler):
                                   HTTPStatus.CONFLICT)
             turn = tutor.turn(audio_path=audio_path, text=text, stt_ms=stt_ms,
                               replace_previous=replace)
+            # one line per turn, so a merge is visible while testing
+            print(f"[turn] replace={replace} heard={turn.heard[:80]!r}", flush=True)
             try:
                 with open(turn.audio_path, "rb") as f:
                     token = remember_audio(f.read())
