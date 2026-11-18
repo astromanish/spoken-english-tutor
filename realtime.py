@@ -99,10 +99,21 @@ class StreamSession:
             return self.snapshot()
         t_stop = time.time()
 
-        silence = b"\x00" * SILENCE_SLICE
-        for _ in range(int(TRAILING_SILENCE_S * 1000 / 250)):
-            self.feed(silence)
-            time.sleep(0.01)
+        def finalised() -> bool:
+            with self._lock:
+                return self._last_idx >= 0 and self._last_idx in self._final
+
+        # The tail exists to make the provider endpoint. When it already has — the
+        # learner paused for the silence window before this call — feeding 1.6 s of
+        # zeros buys nothing and costs a round trip, so skip it.
+        tail_ms = 0
+        if not finalised():
+            # Largest frames the API takes: 250 ms slices with a sleep between them
+            # were ~70 ms of pure waiting on every turn.
+            silence = b"\x00" * MAX_FRAME
+            for _ in range(int(round(TRAILING_SILENCE_S * 1000 / 500))):
+                self.feed(silence)
+            tail_ms = int(TRAILING_SILENCE_S * 1000)
 
         # Nothing heard at all: don't hold the learner for the full timeout.
         # The UI falls back to the MediaRecorder blob, so a short wait costs
@@ -122,6 +133,11 @@ class StreamSession:
         # not the time the learner waited after pressing stop.
         anchor = self._speech_end_at or self._last_feed_at or t_stop
         result["stt_ms"] = int(max(0.0, ((self._final_at or time.time()) - anchor) * 1000))
+        result["stop_ms"] = int((time.time() - t_stop) * 1000)
+        result["tail_ms"] = tail_ms
+        print(f"[stt] stop={result['stop_ms']}ms tail={tail_ms}ms "
+              f"final_already={tail_ms == 0} total_from_speech_end={result['stt_ms']}ms",
+              flush=True)
         self.close()
         return result
 

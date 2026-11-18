@@ -148,11 +148,24 @@ function setBadge(data) {
     : `Level ${data.level} · ${data.level_name}`;
 }
 
+/* Millisecond honesty. `tts` is 0 on the streaming path — nothing is synthesised
+   inside the turn — so the number shown for her voice is the one the learner
+   feels: fetch → first scheduled buffer, measured in playStream(). */
+let lastTimings = null;
+let awaitingFirstAudio = false;
+
 function showTimings(t) {
   if (!t) return;
-  const s = (ms) => (ms / 1000).toFixed(1);
-  els.metric.textContent =
-    `STT ${s(t.stt)}s · LLM ${s(t.llm)}s · TTS ${s(t.tts)}s · turn ${s(t.total)}s`;
+  lastTimings = t;
+  const ms = (v) => (v == null ? '—' : `${Math.round(v)} ms`);
+  const tts = t.tts_first != null ? t.tts_first : (t.tts || null);
+  const heard = (t.stt || 0) + (t.llm || 0) + (t.tts_first || 0);
+  els.metric.textContent = [
+    `STT ${ms(t.stt)}`,
+    `LLM ${ms(t.llm)}`,
+    `TTS ${tts == null ? '…' : ms(tts)}`,
+    `first sound ${t.tts_first == null ? '…' : ms(heard)}`,
+  ].join(' · ');
 }
 
 /* ── summary markdown (only place text is still rendered) ───────────────── */
@@ -332,9 +345,13 @@ async function playFile(blob) {
   await new Promise((r) => setTimeout(r, Math.max(0, (playback.cursor - ctx.currentTime) * 1000) + 60));
 }
 
-/** Stream one message into the audio graph and resolve when it has been heard. */
-async function playStream(url) {
+/** Stream one message into the audio graph and resolve when it has been heard.
+ *  `onFirst(ms)` fires once, when the first buffer is scheduled — that is the
+ *  only TTS number worth showing, because it is the one the learner feels. */
+async function playStream(url, onFirst) {
   const ctx = playbackContext();
+  const t0 = performance.now();
+  let announced = false;
   playback.abort = new AbortController();
   const res = await fetch(url, { signal: playback.abort.signal });
   if (!res.ok) throw new Error(`audio ${res.status}`);
@@ -367,6 +384,10 @@ async function playStream(url) {
     const samples = new Float32Array(pcm.length);
     for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i] / 32768;
     playback.cursor = schedule(samples, rate, playback.cursor);
+    if (!announced) {
+      announced = true;
+      if (onFirst) onFirst(Math.round(performance.now() - t0));
+    }
   }
 
   const left = Math.max(0, (playback.cursor - ctx.currentTime) * 1000);
@@ -387,7 +408,11 @@ async function pump() {
   speaking = true;
   setState('speaking');
   try {
-    await playStream(url);
+    await playStream(url, (firstMs) => {
+      if (!awaitingFirstAudio || !lastTimings) return;
+      awaitingFirstAudio = false;
+      showTimings({ ...lastTimings, tts_first: firstMs });
+    });
   } catch (e) {
     if (e.name !== 'AbortError') setStatus(`⚠️ ${e.message}`, true);
   }
@@ -587,8 +612,13 @@ function onBlock(samples, rate) {
 async function finalizeUtterance() {
   if (finalizing) return;
   finalizing = true;
+  // The clock the learner feels starts at his last word, not at the stop request:
+  // the silence window has already run by the time this fires, and the server's own
+  // stt_ms is anchored to a VAD that notices the pause even later.
+  const sinceLastWord = performance.now() - SILENCE_MS;
   try {
     const { text, stt_ms, blob } = await closeStream();
+    const heardMs = Math.round(performance.now() - sinceLastWord);
     if (started && !muted) openStream(); // the ear is never closed for long
 
     const step = turns.onUtterance(text);
@@ -602,7 +632,9 @@ async function finalizeUtterance() {
       setCap('you', step.text);
       if (step.replace) setStatus('Whole sentence sent — answering that, not the fragment');
       queueTurn(() => runTurn({
-        text: step.text, stt_ms: stt_ms || 0, token: step.token, replace: step.replace,
+        // prefer what he actually waited over the server's internal anchor
+        text: step.text, stt_ms: heardMs || stt_ms || 0,
+        token: step.token, replace: step.replace,
       }));
     } else if (blob && blob.size) {
       // audio-only fallback: the words are the server's to find, so no merging
@@ -659,6 +691,7 @@ function showReply(data) {
   if (data.heard) setCap('you', data.heard);
   setCap('tutor', data.reply2 ? `${data.reply} ${data.reply2}` : data.reply);
   setBadge(data);
+  awaitingFirstAudio = true;
   showTimings(data.timings);
   reportWarning(data);
   enqueueAudio(data.audio);
