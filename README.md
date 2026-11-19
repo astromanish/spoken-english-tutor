@@ -9,9 +9,6 @@ Built as the ZenBricks take-home, using only Sarvam AI models: Saaras v3 (STT),
 `sarvam-105b-conversations` (LLM), Bulbul v3 (TTS).
 
 Python 3.12 · one process · browser Web Audio · `node --test` for turn-taking
-Background and rationale for the internals: [`docs/architecture.md`](docs/architecture.md).
-Rehearsal and demo material: [`docs/demo-rehearsal-job-interview.md`](docs/demo-rehearsal-job-interview.md),
-[`docs/video-script-4min.md`](docs/video-script-4min.md).
 
 ---
 
