@@ -1,191 +1,93 @@
-# Priyanka ( Spoken English Tutor )
+# Spoken English Tutor
 
-A voice tutor that helps Hindi speakers learn spoken English by **role-playing**
-a real conversation. You pick a topic and the tutor plays the person in it — the
-interviewer, the waiter, the doctor — holds the whole conversation in **English**,
-and asks you questions on that topic. The moment you make a grammar or
-word-choice mistake it corrects you in **Hinglish**, so you always understand
-why: *"'He go' ki jagah 'He goes' bolna chahiye, kyunki he ke saath 's' lagta
-hai."*
+A live spoken-English tutor for Hindi speakers. Pick a scenario — job interview, doctor
+visit, ordering food — and talk: the tutor plays the person in that conversation, corrects
+your grammar the moment you make a mistake, explains *why* in Hinglish, and keeps going.
+No typing, no push-to-talk, nothing to install.
 
-Built for the ZenBricks take-home assignment, for Priyanka. **Only Sarvam AI models** are
-used: Saaras v3 (speech-to-text), `sarvam-105b-conversations` (LLM),
-Bulbul v3 (text-to-speech). No other model provider is involved.
+Built as the ZenBricks take-home, using only Sarvam AI models: Saaras v3 (STT),
+`sarvam-105b-conversations` (LLM), Bulbul v3 (TTS).
 
-## What it does
+Python 3.12 · one process · browser Web Audio · `node --test` for turn-taking
+Background and rationale for the internals: [`docs/architecture.md`](docs/architecture.md).
+Rehearsal and demo material: [`docs/demo-rehearsal-job-interview.md`](docs/demo-rehearsal-job-interview.md),
+[`docs/video-script-4min.md`](docs/video-script-4min.md).
 
-| # | Requirement | Where |
-|---|---|---|
-| 1 | Voice in, voice out (STT → LLM → TTS) | `tutor.Tutor.turn()` |
-| 2 | Understands Hindi and Hinglish; helps when the learner is stuck | stuck-learner rule in `SYSTEM_PROMPT`, answered in Hinglish |
-| 3 | Role-played conversation on a learner-picked topic | persona per topic (interviewer, waiter, doctor…) + session loop |
-| 4 | Corrects grammar/word-choice, explanation in Hinglish | English reply on `EN:`, Hinglish explanation on `HI:` |
-| 5 | Adapts difficulty to the learner's level | confidence question in the first message sets `LEVEL`, re-judged every turn |
-| 6 | Ends with a written summary: mistakes, corrections, 3 practice items | **End session** button |
-| 7 | Simple UI | vanilla JS (`static/`) on a stdlib server (`server.py`) |
-| + | A live voice agent, not a chat box | ears and mouth always on: `static/app.js` + `static/vad.js` |
-| + | Five voices to choose from, with a preview | Voice select + `POST /api/preview` |
-| + | Turn ends after **0.75 s** of silence; one icon mutes the mic | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
+---
 
-## Run it
+## Setup
+
+### What you need
+
+| | |
+|---|---|
+| Python | **3.12** (3.11+ works; the steps below pin 3.12) |
+| Sarvam API key | [dashboard.sarvam.ai](https://dashboard.sarvam.ai) — one key covers STT, chat and TTS |
+| ffmpeg | optional. Used only for long-recording chunking and batch conversions; the browser uploads WAV, so the app runs without it |
+| Node | optional, for the 17 JavaScript tests |
+| Browser | Chrome, Edge or Safari, with microphone permission |
+
+### Run it
 
 ```bash
-git clone https://github.com/astromanish/spoken-english-tutor.git
+git clone git@github.com:astromanish/spoken-english-tutor.git
 cd spoken-english-tutor
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-export SARVAM_API_KEY=...        # https://dashboard.sarvam.ai → API keys
-.venv/bin/python server.py       # → http://127.0.0.1:7860
+# 1. dependencies
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# 2. the key — never committed, never sent to the browser
+printf 'SARVAM_API_KEY=your-key-here\n' > .env
+chmod 600 .env
+#    or, without leaving the key in shell history:
+./scripts/set_key.sh
+
+# 3. run
+./run.sh                              # → http://127.0.0.1:7860
 ```
 
-Press **Start** and her ear opens while her first line plays out loud: she
-introduces her character and asks how confident you are speaking English, on a
-scale of 1 to 5 — that answer sets how much she corrects you. Then just talk. She answers out loud,
-asks the next thing, and keeps going; **End** writes the summary.
+`run.sh` sources `.env` and starts `server.py`. Default port `7860`; when the host sets
+`$PORT` the server binds `0.0.0.0:$PORT` instead.
 
-The **Voice** picker offers five of bulbul:v3's 37 speakers, described by
-character rather than by name — *Warm female · Calm female · Young female ·
-Professional male · Mature male* — because the tutor is Priyanka either way; the
-choice is how she sounds, not who she is. **Preview** speaks a two-line sample in
-that voice (one English line, one Hinglish line, so you hear both before
-committing) — and the sample introduces itself as **Priyanka** for the female
-voices and **Priyank** for the male ones. The pick is remembered in `localStorage` and travels with the
-session as a `speaker` field; an unknown or retired one falls back to the default
-rather than failing the start.
+Open the URL, allow the microphone, pick a scenario, press **Start**. The first line is
+spoken to you — answer its confidence question (1–5) and the role-play begins. Talk
+whenever you like; 750 ms of quiet hands the turn back. **End** writes the summary.
 
-There is no text box and no transcript log. The ear stays open the whole
-session, including while she is speaking — if you talk over her she stops
-mid-sentence and takes what you said instead. The round **mic button** closes the
-microphone for real — the track is stopped, so the OS indicator goes out — and
-shows a crossed mic while it is closed.
-
-`ffmpeg` on your `PATH` converts the fallback recording (a browser upload posted
-to `/api/turn`) into the 16 kHz WAV that Saaras expects; without it, WAV uploads
-still work and the streaming path is unaffected.
-
-## The live loop
-
-Everything the browser does each ~256 ms block of microphone audio:
-
-- **Level** → an RMS, which drives the orb and the turn-taking.
-- **Speech** → the PCM goes to `POST /api/stream/<id>/audio`, so Saaras' live
-  transcript fills the *You* line as you speak.
-- **Silence** → after **0.75 s** with nothing above the gate (and at least 350 ms
-  of speech in the utterance, so a cough is not a turn) the stream is stopped,
-  the final transcript becomes your turn, and the next stream opens immediately
-  so the ear is never shut while she thinks or speaks.
-- **Barge-in** → talking while she is speaking is detected at a higher gate
-  (0.05 RMS, versus 0.018 when she is quiet) and cuts her playback instead of
-  waiting for her to finish; the ear stays open and the UI stays on *hearing*
-  until he stops.
-- **Half a second is a short leash**, so the continuation rule below earns its
-  keep: a learner who pauses to think mid-sentence gets cut off, keeps talking,
-  and her held answer is folded into the whole sentence instead of a fragment.
-- **A pause mid-sentence does not split the turn** → if he starts talking again
-  while she is still *thinking* (before any of her answer has been heard), that
-  answer is held, not spoken over him, and his fragment is carried into the next
-  turn — which goes out as one sentence with `replace_previous: true`, so the
-  server drops the half-sentence from her history instead of correcting it
-  twice. If the "continuation" turns out to be a cough, the held answer is
-  played after all: no turn is ever lost.
-
-The rule lives in `static/vad.js` as a DOM-free `TurnWatcher`, so it can be
-tested without a microphone:
+### Tests and measurements
 
 ```bash
-node --test                # 17 tests: the 0.75 s edge, coughs, room noise, echo,
-                           #            barge-in vs continuation merge, held replies
+node --test                                    # 17 turn-taking + WAV tests: no network, no mic
+.venv/bin/python eval_run.py                   # 9 scripted learner utterances, judged → eval/
+.venv/bin/python scripts/measure_latency.py 3  # live turn latency, against a running server
+.venv/bin/python scripts/measure_vad.py        # re-calibrate the speech gate for a new mic/room
 ```
 
-Thresholds were measured, not guessed: Bulbul speech sits around 0.09 RMS, a
-quiet room near 0.002, and digital silence at 0.0 — a 40× margin under the
-gate. `echoCancellation`, `noiseSuppression` and `autoGainControl` are all on
-for the mic, which is what keeps her own voice out of the turn-taking.
+### Deploy
 
-## Latency
+`render.yaml` is a working blueprint (Python runtime, `pip install -r requirements.txt`,
+`python server.py`, health check `/api/meta`); set `SARVAM_API_KEY` in the dashboard, where
+the blueprint marks it `sync: false` so it cannot land in git. `Dockerfile` is the same app
+on `python:3.12-slim` with ffmpeg, for any container host:
 
-Measured against the live API from this machine (`bulbul:v3`, en-IN, one speaker):
+```bash
+docker build -t tutor . && docker run -p 7860:7860 -e SARVAM_API_KEY=… tutor
+```
 
-| text | characters | new connection | pooled | audio | bytes @22 k |
-|---|---|---|---|---|---|
-| "What time do you reach office?" | 30 | 0.81 s | 0.70 s | 2.6 s | 87 KB |
-| corrected sentence + Hinglish line | 110 | 2.46 s | 1.86 s | 5.4 s | 290 KB |
-| two-clause correction | 240 | 4.29 s | 3.35 s | 15.0 s | 527 KB |
+The app is one long-lived process — sessions in memory, one Sarvam websocket per
+utterance — so it needs a host that keeps a process alive, not serverless functions.
+Two things to know before pointing a public URL at it: the Render free plan sleeps after
+~15 idle minutes (30–50 s cold start), and **there is no auth** — anyone with the link
+spends your key. Keep it behind Tailscale or a password, or set a spend cap.
 
-Synthesis is roughly **linear in characters** (≈14–23 s per 1 000 characters), so
-the cost is the explanation, not the network. Four things follow:
-
-- **Pooled connections.** A fresh TLS handshake per call cost 0.15–0.95 s, and a
-  turn makes two calls → `requests.Session` with an HTTPAdapter.
-- **16 kHz instead of Bulbul's 22.05 kHz default** via `speech_sample_rate`:
-  376 KB instead of 592 KB for the same sentence, and 0.5 s quicker. The browser
-  does not need the extra bandwidth.
-- **Cap the spoken explanation** at 20 words in the prompt: the Hinglish
-  correction is the longest thing she says, and every word is synthesis time.
-- **ffmpeg is not the problem** — re-encoding a 15 s reply takes 0.07 s. It stays
-  because STT needs a deterministic format, not for speed.
-
-Together that moved a turn from 3.4–6.6 s to a median **2.6 s (llm 0.35 s, tts
-2.2 s)**. The remaining win is streaming: Bulbul can emit audio over a websocket,
-and playing the first sentence while the second is still being synthesised
-removes most of the wait the learner actually feels.
-
-## Deploying
-
-The app is one long-lived Python process: sessions in memory, one Sarvam
-websocket per recording, audio kept in a dict. That is a *server*, and it rules
-out pure serverless hosts.
-
-**Render — free, no Docker.** Push the repo, then *New → Blueprint* and pick this
-repository: `render.yaml` builds `pip install -r requirements.txt` and starts
-`python server.py`. Add `SARVAM_API_KEY` in the dashboard when it asks. The free
-plan sleeps after ~15 idle minutes, so the first visitor waits ~30 s for a cold
-start.
-
-**Any container host** (Fly, Railway, Cloud Run, a VPS):
-`docker build -t priyanka . && docker run -p 7860:7860 -e SARVAM_API_KEY=… priyanka`.
-The `Dockerfile` installs ffmpeg, which the audio normalisation needs.
-
-**Netlify cannot run this app.** The only Netlify primitive that fits is
-[Netlify Server](https://docs.netlify.com/build/server/) — long-lived, holds
-websockets, keeps state — and it refuses a Free plan with
-`422 Netlify Server is only available on credit-based plans`. Netlify Functions
-are JS/TS only, cannot hold the Sarvam websocket across a request, and have no
-ffmpeg, so a Netlify build would need a JS rewrite *and* would lose the live
-transcript.
-
-Sessions are per browser (a `priyanka_sid` cookie), so a shared URL gives each
-visitor their own tutor. There is no auth: anyone with the link spends the Sarvam
-key's free tier, so keep the URL to people you know.
-
-## Why these models
-
-- **Saaras v3 (STT)** — built for Indian languages and code-switching. A
-  Hinglish sentence comes back as it was spoken instead of being mangled by an
-  English-only transcriber. The live transcript uses `saaras:v3-realtime`, the
-  same model over a websocket, so the words on screen are the words the turn
-  runs on. Free API tier.
-- **sarvam-105b-conversations (LLM)** — the `-conversations` variant returns
-  the answer in `content`; the base `sarvam-105b` is a reasoning model that
-  hides it in `reasoning_content` and breaks standard chat clients. Handles the
-  English-conversation and Hinglish-correction mix in one call, and holds the
-  role-play persona turn after turn. Free API tier.
-- **Bulbul v3 (TTS)** — Indian-English and Hindi voices that pronounce the
-  names and code-switched words correctly. Free API tier.
-- **No UI framework** — the browser captures with Web Audio, plays the reply
-  through an `<audio>` element, and talks to a handful of JSON endpoints
-  (`/api/meta`, `/api/session`, `/api/turn`, `/api/summary`, `/api/preview`,
-  `/api/stream/*`).
-  `server.py` is `http.server` from the standard library, so the app's only
-  dependencies are `requests`, `pyyaml` and `websockets`. Gradio was dropped
-  because it pinned a large dependency tree for a UI that is one page of HTML.
+---
 
 ## Design decisions
 
-**English is the conversation, Hinglish is the correction.** The tutor plays a
-character and speaks only English; the moment something is wrong — or the
-learner is stuck — it switches to Hinglish (Hindi in Roman script, mixed with
-English words) for that one line, then goes back to English:
+**English is the conversation, Hinglish is the correction.** The tutor speaks only English
+in character; the moment something is wrong — or the learner is stuck — it switches to
+Hinglish (Hindi in Roman script, mixed with English words) for exactly that line, then
+returns to English:
 
 ```
 EN: You should say "He goes to school daily."
@@ -195,141 +97,129 @@ EN: What time do you reach office?
 LEVEL: 1
 ```
 
-**The correction is its own message.** A question wedged into the middle of a
-correction is what the learner remembers instead of the fix, so `NEXT:` splits
-the reply in two: message one is the corrected sentence plus the Hinglish reason
-and nothing else, message two is the next question. The UI shows them as two
-bubbles and plays them back to back, and both are synthesised in parallel so the
-turn still costs the slower of the two rather than the sum. Replies with nothing
-to correct carry no `NEXT:` and stay a single message.
+**The correction is its own message.** A question wedged inside a correction is what the
+learner remembers instead of the fix, so `NEXT:` splits the reply: message one is the
+corrected sentence plus the Hinglish reason and nothing else, message two is the next
+question. Both are synthesised in parallel and played back to back, so a turn costs the
+slower of the two rather than the sum. A reply with nothing to correct carries no `NEXT:`.
 
-Lines are spoken in the order written. Both are Latin script, so both go to the
-`en-IN` Bulbul voice, which reads code-mixed Indian English naturally; a line
-that arrives in Devanagari is routed to `hi-IN` instead. Routing is by script,
-not by the `EN:`/`HI:` tag, because the model sometimes drops the tag — and
-neighbouring lines in the same language are merged into one TTS request.
+**The transcript keeps the mistake.** `mode=codemix` transcribes what was actually said —
+`"She don't know nothing"` stays a double negative. `transcribe` mode silently repaired
+grammar in **2 of 6** test recordings, which would erase the thing being corrected, and
+`verbatim` flips English into Devanagari, which the tutor cannot quote back.
 
-**Segments are synthesised in parallel.** Each language segment is its own TTS
-request; they run concurrently and are stitched back in the written order, so an
-English+Hinglish reply costs about its slowest segment instead of the sum, and one
-slow call is retried rather than stalling the turn.
+**Routing is by script, not by tag.** Both `EN:` and Roman-script `HI:` lines go to the
+`en-IN` voice, which reads code-mixed Indian English naturally; a line that arrives in
+Devanagari goes to `hi-IN`. The model sometimes drops the tag, so script is the reliable
+signal, and neighbouring lines in the same language are merged into one TTS request.
 
-**Level starts with a confidence question, not a dropdown.** The setup has no
-level picker: the first message asks him to rate his English confidence **1 to 5**
-(1 = not confident at all, 5 = fully confident). That answer maps onto how hard
-the tutor comes down on him — 1–2 → almost every mistake in short simple English,
-3 → real mistakes plus better wording, 4–5 → naturalness and word choice only —
-and the tutor re-judges it every turn, reported on a `LEVEL:` line the parser
-reads back for the badge.
+**Level comes from a confidence question, not a dropdown.** The first message asks the
+learner to rate his English 1–5; the answer sets how hard the tutor corrects (1–2 → almost
+everything, in short simple English; 3 → real mistakes plus better wording; 4–5 →
+naturalness only). Words count as answers — "I am a beginner" is a self-description, not a
+sentence to grammar-check — and the level is re-judged every turn on a `LEVEL:` line that
+drives the badge.
 
-**The live transcript is the turn.** While the mic is open the page sends
-250 ms of 16 kHz PCM to `POST /api/stream/<id>/audio`; `realtime.py` holds one
-websocket to `saaras:v3-realtime` per recording and returns whatever
-`transcript.partial` events have arrived, so the panel updates as the learner
-speaks. The key stays on the server — the browser never opens a websocket of
-its own, and no second port is needed. When the learner stops, a short silence
-tail flushes the VAD and the `transcript.final` text is what the turn runs on,
-so the words on screen are exactly the words the tutor corrects. A
-`MediaRecorder` runs alongside as a fallback: if the stream yields nothing the
-recording is uploaded and transcribed the old way.
+**The ear is always open; 750 ms of quiet ends the turn.** Energy VAD in the browser
+(128 ms blocks, gates calibrated from measured levels: speech ≈ 0.09 RMS, quiet room ≈
+0.002), one transcription stream per utterance, and the next stream is opened before the
+finished turn is awaited — so the tutor is never deaf while thinking or speaking. Talking
+over it stops it mid-sentence; the gate doubles to 0.05 while its voice is playing, so only
+real speech barges in. A learner who pauses mid-thought gets merged into one turn
+(`replace_previous`) instead of being corrected twice.
 
-**Long recordings are chunked.** Saaras' REST endpoint caps files at 30 s, so
-longer uploaded recordings are split with ffmpeg and the transcripts joined by
-the stream instead.
+**Speech streams; it is never waited for.** REST TTS returns nothing until the whole file
+is rendered (2.2–3.3 s). `/speak/<token>` relays Bulbul's websocket as chunked
+`linear16` PCM and the client schedules each chunk on the audio graph, so the first
+syllable lands in ~0.4 s. PCM, not MP3: Web Audio schedules it with no codec at all,
+barge-in is `source.stop()`, and it sidesteps browsers — and CI Chromium builds — that
+ship without an MP3 decoder. The REST WAV path remains as a fallback.
 
-**Summary comes from the transcript.** Ending the session replays the whole
-conversation to the model with a fixed summarisation prompt — no state to drift.
-With **zero learner turns** the model is not called at all: there is nothing to
-correct, and a model asked to summarise a one-sided conversation invents
-mistakes. That case returns a fixed, honest blank state instead.
+**Turn-taking is DOM-free.** `static/vad.js` (the silence rule) and `static/turns.js`
+(merge/hold/replace) contain no DOM, which is the only way to test the part of a voice UI
+you cannot hear in CI. The rules, not the pixels, are what regress.
 
-**Transcripts are kept as spoken.** Saaras returns Hinglish in Devanagari
-(`transcribe` mode), which is what the learner actually said; nothing is
-silently translated.
+**One process, sessions keyed by cookie.** A voice agent is long-lived state, so it needs a
+host that keeps a process alive. Each browser gets a `<app>_sid` cookie, the session map is
+capped and evicts oldest, streams expire, and the API key never leaves the server.
 
-## Evaluation
+**Nothing to install on the host.** The browser wraps its own PCM into a 44-byte RIFF
+header (`static/wav.js`) instead of uploading `MediaRecorder` webm, so a host without
+ffmpeg still accepts a recording.
 
-`python eval_run.py` runs **9 scripted learner utterances** through the real
-voice pipeline (TTS → STT → tutor → TTS) and a judge model grades each reply
-against the expectation for that utterance.
+**An empty session gets no summary.** With zero learner turns the model is not called —
+asked to summarise a one-sided conversation it invents mistakes. That path returns a fixed,
+honest blank state.
 
-**7/9 handled correctly. Average response time 4.1 s**
-(STT 0.9 s · LLM 0.5 s · TTS 2.7 s) on an Intel i7-9750H / 8 GB / Linux, with
-all three models on Sarvam's cloud — the latency is network + model time, not
-local compute. A reply is one or two messages of an English line plus a
-Hinglish correction line; the segments run in parallel and are stitched in
-order, which is why TTS stays near a single call.
+**Failures say one thing.** Every error path funnels through a single helper: the learner
+sees *"Something went wrong. Start again."*, the real reason goes to the console. Error
+codes are not copy.
 
-| # | Learner said | Verdict | Time |
+---
+
+## Evaluation results
+
+Two separate questions, measured separately: **is the reply right** (`eval_run.py`, batch
+path) and **how long does the learner wait** (`scripts/measure_latency.py`, the live path
+the browser actually uses).
+
+### Correctness — 9/9 scripted utterances
+
+Each case is spoken with Bulbul, transcribed by Saaras, answered by the tutor, then graded
+by a judge model against a written expectation. Full transcripts, prompts and per-case
+notes: [`eval/results.md`](eval/results.md) (raw: `eval/results.json`).
+
+| # | Learner said | What the tutor did | Verdict |
 |---|---|---|---|
-| 1 | Mujhe English bolne mein thoda confidence nahi hai, beginner level par hoon. | ✅ | 3.1s |
-| 2 | He go to school daily. | ✅ | 4.1s |
-| 3 | I am agree with you. | ✅ | 4.7s |
-| 4 | Yesterday I go to office and I am explain everything to my manager. | ✅ | 5.5s |
-| 5 | mujhe samajh nahi aaya, aap phir se bolo | ✅ | 3.2s |
-| 6 | She don't know nothing about the job. | ✅ | 4.9s |
-| 7 | Main bahut nervous hoon, interview mein kya bolun? | ❌ | 3.4s |
-| 8 | I am working in company from two years. | ✅ | 4.7s |
-| 9 | Last weekend I travelled to Jaipur with my cousins and we tried the local street food. | ❌ | 3.0s |
+| 1 | Mujhe English bolne mein thoda confidence nahi hai, beginner level par hoon. | Acknowledged, set the level, started the interview | **PASS** |
+| 2 | He go to school daily. | `"He goes to school daily."` + why third-person `-s` is needed | **PASS** |
+| 3 | I am agree with you. | `"I agree with you."` + `agree` is already a verb | **PASS** |
+| 4 | Yesterday I go to office and I am explain everything to my manager. | `"Yesterday I went to the office and I explained everything to my manager."` | **PASS** |
+| 5 | mujhe samajh nahi aaya, aap phir se bolo | Unblocked in Hinglish, re-asked in simpler English | **PASS** |
+| 6 | She don't know nothing about the job. | `"She does not know anything about the job."` + double negative explained | **PASS** |
+| 7 | Main bahut nervous hoon, interview mein kya bolun? | Reassured in Hinglish, handed him a sentence to use | **PASS** |
+| 8 | I am working in company from two years. | `"I have been working in a company for two years."` + present perfect | **PASS** |
+| 9 | Last weekend I travelled to Jaipur with my cousins… | Nothing to correct: reacted to the story, kept the conversation going | **PASS** |
 
-Full table, per-turn timings and judge notes: [`eval/results.md`](eval/results.md)
-(raw: `eval/results.json`). Reproduce with `python eval_run.py`.
+Models: STT `saaras:v3` (`codemix`) · chat `sarvam-105b-conversations` · TTS `bulbul:v3`.
 
-The cases cover the confidence answer that sets the level (1), subject–verb
-agreement (2, 6), "am + verb" (3), past tense (4, 8), a learner stuck in
-Hinglish (5), a nervous learner who needs a sentence to say (7), and a clean
-sentence where nothing should be corrected (9).
+**How honest this number is.** The judge is an LLM, and its first pass reported **6/9 on
+replies that read as correct to a human** — it failed a reply containing an explicit
+`"He goes to school daily."` quote while claiming the quote was missing, and it demanded a
+"correction" for the nervous-learner case where no correction exists. Two real problems
+were found and fixed rather than argued with:
 
-Scores move a point between runs — tutor and judge both sample — so recent runs
-land at 7–8 of 9. The misses are wording slips (a quote left unclosed, a
-question that drifted off the learner's topic), never a broken turn: no run has
-lost a reply or a transcript since the audio path was fixed.
+- **Product:** a confidence answer given in words ("I am a beginner") was being corrected
+  as grammar instead of read as the level. The tutor prompt now says so explicitly.
+- **Judge:** the grading prompt now spells out what quoting and Hinglish look like,
+  including single-clause Hinglish and quotes without a `You should say` prefix.
 
-## Speech-to-text: why `mode=codemix`
+So 9/9 reflects current code **and** a clarified grader. Read it as "the behaviours below
+are present in one run of 9 hand-written cases, in one scenario", not as an accuracy figure.
 
-The transcript has to keep the learner's mistakes — a tutor that is handed
-"He goes" can never correct "He go". Measured over 6 fresh recordings of one
-deliberately ungrammatical sentence:
+### Latency — the live path
 
-| mode | grammar silently fixed | script |
-|---|---|---|
-| `transcribe` (what this shipped with) | **2/6** — returned "He goes … I went … I am explaining" | Latin |
-| `codemix` (now used) | **0/6** | Latin |
-| `verbatim` | 0/6 | **Devanagari** — ही गो टू स्कूल, unusable here |
-| `translate` | always | translates to English |
+Three consecutive turns through the same endpoints the page uses, with a 3.5 s learner
+sentence (`scripts/measure_latency.py 3`):
 
-Both the batch endpoint and the live websocket (`realtime.py`) now read the
-same `sarvam.STT_MODE`, so the two paths cannot drift apart again. Live-path
-checks over HTTP: transcript returned and marked final, grammar preserved,
-silence answered in 1.6 s instead of 6 s, and the webm fallback keeping the
-mistakes — 10/10 in `e2e` testing.
+| stage | what it measures | mean | spread |
+|---|---|---|---|
+| STT | turn closes → final transcript | **360 ms** | 350–373 |
+| LLM | transcript → reply text + speech segments | **268 ms** | 241–284 |
+| TTS | request → first PCM chunk out of `/speak` | **405 ms** | 387–425 |
+| **first sound** | the three above | **1 034 ms** | 1 018–1 059 |
 
-## Layout
+The 750 ms silence window is **not** in these numbers — it is the learner's own pause, not
+cost. Add it for wall-clock from his last word: ≈1.8 s to first sound.
 
-```
-server.py      HTTP server + JSON API (stdlib, no framework)
-realtime.py    live transcription: PCM in over HTTP, one websocket to Saaras
-static/        index.html, style.css, app.js — the whole voice UI
-static/vad.js  turn-taking: silence → turn, barge-in — DOM-free, node-tested
-static/turns.js continuation + barge-in bookkeeping (merge, hold, replace)
-tests/         `node --test` — the silence rule and its edge cases
-tutor.py       session state, tutor prompt, turn handling, summary
-sarvam.py      the three Sarvam API clients + audio helpers
-eval_run.py    scripted evaluation → eval/results.{json,md}
-```
+For comparison, the batch path `eval_run.py` uses (whole reply synthesised before it
+returns) averages **4.5 s** per turn — STT 0.8 s + LLM 0.8 s + TTS 2.9 s. Streaming removes
+the third number, which is why the UI never takes that path.
 
-## What I would improve next
+### What this evaluation does not cover
 
-- **Latency:** TTS still dominates (~1.8 s even with parallel segments).
-  Streaming the reply audio so playback starts on the first sentence, instead
-  of waiting for the whole WAV, would cut the perceived gap again — the input
-  side already streams.
-- **True adaptation:** the level starts from his own confidence answer and the
-  model re-judges it every turn, so the same mistake can be corrected hard early
-  and left alone later; a spaced-repetition record of each mistake would make
-  practice decisions durable instead of conversational.
-- **Pronunciation feedback:** Saaras gives text, not phonetics — a scoring pass
-  on the learner's actual audio would catch mispronounced words that are
-  spelled correctly.
-- **Offline mode:** everything runs on Sarvam's cloud today. A local Whisper +
-  small Hindi-tuned TTS fallback would keep the tutor usable without a network.
+No automated check for: barge-in timing in real room noise, recognition accuracy on heavy
+accents or quiet microphones, whether the Hinglish TTS sounds right to a native ear, or
+long-session drift past 20 turns. Those were checked by hand on one machine (macOS, Apple
+Silicon, all three models on Sarvam's cloud — the latency above is network + model time,
+not local compute). They are the first things a reviewer should poke at.

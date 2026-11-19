@@ -49,7 +49,8 @@ Return one word: PASS or FAIL, then a short reason (max 20 words).
 
 PASS requires ALL of these being met:
 - the reply is in English as the character, with Hinglish only for the correction or unblock line — never a whole reply in Devanagari Hindi,
-- when the expectation calls for a correction, the corrected English sentence appears in double quotes and the explanation is in Hinglish (Roman script),
+- when the expectation calls for a correction, the corrected English sentence appears inside double quotes (with or without a "You should say" prefix) and the explanation is in Hinglish — that is Hindi words written in Roman script, mixed into English. Any Hindi-in-Latin-script phrasing counts as Hinglish, including a single clause such as "'He go' ki jagah 'He goes' bolna chahiye, kyunki third person singular mein 's' lagta hai." Do not fail a reply because the Hinglish is short, or because the quotes follow a comma rather than a colon.
+- when the learner is stuck or nervous and the expectation asks for encouragement, Hinglish encouragement plus one English sentence in quotes satisfies it; that case needs no "correction" explanation,
 - the expectation below is met, and the learner's problem is not ignored.
 Reply as: PASS/FAIL — <reason>"""
 
