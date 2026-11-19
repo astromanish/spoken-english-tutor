@@ -86,6 +86,10 @@ are showing a conversation going wrong and being fixed.** Every visual proves th
 
 ## Demo call sheet (rehearse this, do not improvise)
 
+> The full rehearsal ladder — five beats, each line with the exact output it produces —
+> is in **`docs/demo-rehearsal-job-interview.md`**. Rehearse from that file; this is the
+> short version.
+
 Scenario: **Job interview**. Tutor asks your confidence first — that is not a test, it
 sets the correction level.
 

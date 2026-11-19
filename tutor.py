@@ -295,7 +295,9 @@ def _parse_reply(raw: str) -> tuple[list[tuple[str, str]], str]:
             continue  # model often emits an empty "HI:" line
         m = re.match(r"^(EN|HI)\s*:\s*(.+)$", line, re.IGNORECASE)
         if m:
-            text = m.group(2).strip()
+            # The model occasionally closes a quoted sentence with `">`, which is not
+            # speech and not a caption: drop the marker, keep the quote.
+            text = re.sub(r">\s*$", "", m.group(2).strip()).strip()
             # Hinglish corrections are Roman-script Hindi, so route by script:
             # Devanagari → hi-IN, Latin (English or Hinglish) → en-IN.
             lang = _lang_for(text)
