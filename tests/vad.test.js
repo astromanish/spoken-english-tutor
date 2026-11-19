@@ -1,18 +1,19 @@
 /* The turn-taking rule, exercised without a microphone:
- *   node --test tests/
+ *   node --test
  * Values are real measurements — 0.09 RMS is Bulbul speech, 0.0023 a quiet
- * room, 0.0 digital silence.
+ * room, 0.0 digital silence. Blocks are 128 ms (ScriptProcessor 2048 at 16 kHz),
+ * the same size the app feeds, so "750 ms of quiet" means six blocks here too.
  */
 const test = require('node:test');
 const assert = require('node:assert');
 const { TurnWatcher, DEFAULTS } = require('../static/vad.js');
 
-const BLOCK = 256; // ms per mic block
+const BLOCK = 128; // ms per mic block — matches static/app.js
 const SPEECH = 0.09;
 const HISS = 0.0023;
 const SILENCE = 0.0;
 
-/** Feed `ms` of a level in 256 ms blocks; returns the events with timestamps. */
+/** Feed `ms` of a level in mic blocks; returns the events with timestamps. */
 function feed(w, rms, ms, t, speaking = false) {
   const events = [];
   for (let elapsed = 0; elapsed < ms; elapsed += BLOCK) {
@@ -23,7 +24,7 @@ function feed(w, rms, ms, t, speaking = false) {
   return { events, t };
 }
 
-test('a quarter second of quiet ends the turn', () => {
+test('three quarters of a second of quiet ends the turn', () => {
   const w = new TurnWatcher();
   let t = 0;
   let r = feed(w, SPEECH, 1024, t);
@@ -31,23 +32,23 @@ test('a quarter second of quiet ends the turn', () => {
   const speechEnd = r.t;
   const turn = r.events[0].t;
 
-  // one 128 ms block of quiet — not yet
-  r = feed(w, SILENCE, 128, r.t);
+  // six blocks = 640 ms measured — not yet
+  r = feed(w, SILENCE, 768, r.t);
   assert.deepStrictEqual(r.events, []);
 
-  // a second block crosses 250 ms — hers now
+  // the seventh crosses 750 ms — hers now
   r = feed(w, SILENCE, 128, r.t);
   assert.strictEqual(r.events.length, 1);
   assert.strictEqual(r.events[0].ev, 'turn-end');
   const quietFor = r.events[0].t - speechEnd;
-  assert.ok(quietFor >= 250 && quietFor < 384, `quiet for ${quietFor} ms`);
+  assert.ok(quietFor >= 750 && quietFor < 896, `quiet for ${quietFor} ms`);
   assert.ok(speechEnd - turn >= 768, 'speech was long enough to count');
 });
 
 test('a cough shorter than 350 ms never becomes a turn', () => {
   const w = new TurnWatcher();
   let t = 0;
-  let r = feed(w, SPEECH, 256, t); // one block only
+  let r = feed(w, SPEECH, 256, t); // two blocks, 256 ms of voice
   assert.deepStrictEqual(r.events.map((e) => e.ev), ['speech-start']);
   r = feed(w, SILENCE, 4000, r.t);
   assert.deepStrictEqual(r.events, [], 'no turn-end for 256 ms of voice');
@@ -64,14 +65,14 @@ test('speaking again resets the silence clock', () => {
   let t = 0;
   const a = feed(w, SPEECH, 512, t);
   t = a.t;
-  const b = feed(w, SILENCE, 128, t); // a pause, but under a quarter second
+  const b = feed(w, SILENCE, 384, t); // a pause, but under three quarters
   t = b.t;
   const c = feed(w, SPEECH, 512, t); // he carries on mid-sentence
   t = c.t;
-  const d = feed(w, SILENCE, 128, t); // the final pause, still short
+  const d = feed(w, SILENCE, 384, t); // the final pause, still short
   assert.deepStrictEqual([...b.events, ...c.events, ...d.events], []);
 
-  const e = feed(w, SILENCE, 256, d.t);
+  const e = feed(w, SILENCE, 512, d.t); // the seventh quiet block: 768 ms measured
   assert.strictEqual(e.events.length, 1);
   assert.strictEqual(e.events[0].ev, 'turn-end');
 });
@@ -93,5 +94,5 @@ test('reset clears a turn in progress', () => {
   w.reset();
   r = feed(w, SILENCE, 4000, r.t);
   assert.deepStrictEqual(r.events, []);
-  assert.strictEqual(DEFAULTS.silenceMs, 250);
+  assert.strictEqual(DEFAULTS.silenceMs, 750);
 });

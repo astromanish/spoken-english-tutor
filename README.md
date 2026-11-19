@@ -25,7 +25,7 @@ Bulbul v3 (text-to-speech). No other model provider is involved.
 | 7 | Simple UI | vanilla JS (`static/`) on a stdlib server (`server.py`) |
 | + | A live voice agent, not a chat box | ears and mouth always on: `static/app.js` + `static/vad.js` |
 | + | Five voices to choose from, with a preview | Voice select + `POST /api/preview` |
-| + | Turn ends after **0.25 s** of silence; one icon mutes the mic | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
+| + | Turn ends after **0.75 s** of silence; one icon mutes the mic | `TurnWatcher` in `static/vad.js`, tested in `tests/` |
 
 ## Run it
 
@@ -70,7 +70,7 @@ Everything the browser does each ~256 ms block of microphone audio:
 - **Level** → an RMS, which drives the orb and the turn-taking.
 - **Speech** → the PCM goes to `POST /api/stream/<id>/audio`, so Saaras' live
   transcript fills the *You* line as you speak.
-- **Silence** → after **0.25 s** with nothing above the gate (and at least 350 ms
+- **Silence** → after **0.75 s** with nothing above the gate (and at least 350 ms
   of speech in the utterance, so a cough is not a turn) the stream is stopped,
   the final transcript becomes your turn, and the next stream opens immediately
   so the ear is never shut while she thinks or speaks.
@@ -93,7 +93,7 @@ The rule lives in `static/vad.js` as a DOM-free `TurnWatcher`, so it can be
 tested without a microphone:
 
 ```bash
-node --test                # 17 tests: the 0.25 s edge, coughs, room noise, echo,
+node --test                # 17 tests: the 0.75 s edge, coughs, room noise, echo,
                            #            barge-in vs continuation merge, held replies
 ```
 

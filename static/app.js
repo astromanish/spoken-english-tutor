@@ -3,7 +3,7 @@
  * No composer, no transcript log: the ear is open the whole session and the
  * mouth answers out loud. The browser does the turn-taking locally — it watches
  * the mic level, feeds 16 kHz PCM to the server's Sarvam stream while the
- * learner talks, and sends the turn once they have been quiet for 0.25 s.
+ * learner talks, and sends the turn once they have been quiet for 0.75 s.
  *
  *   GET  /api/meta                topics
  *   POST /api/session             → greeting text + spoken greeting WAV
@@ -39,7 +39,7 @@ const els = {
 
 const STT_RATE = 16000;   // Saaras realtime wants linear16 mono at 16 kHz
 const FLUSH_MS = 250;     // how much audio each upload carries
-const SILENCE_MS = 250;   // quiet this long and the turn is hers
+const SILENCE_MS = 750;   // quiet this long and the turn is hers
 const MIN_SPEECH_MS = 350; // shorter than this is a cough, not a sentence
 const GATE_BASE = 0.018;  // RMS floor for "someone is talking"
 const GATE_SPEAKING = 0.05; // higher while she is talking: that is barge-in
@@ -104,7 +104,7 @@ const STATE_TEXT = {
   idle: '',
   connecting: 'Connecting — {s} speaks first…',
   listening: 'Mic on — speak whenever you like',
-  hearing: 'Hearing you — {s} takes the turn after a quarter second of quiet',
+  hearing: 'Hearing you — {s} takes the turn after three quarters of a second of quiet',
   thinking: 'Thinking…',
   speaking: '{S} is speaking — talk over {o} any time',
   muted: 'Mic off — nothing is being recorded',
@@ -642,13 +642,13 @@ function onBlock(samples, rate) {
 async function finalizeUtterance() {
   if (finalizing) return;
   finalizing = true;
-  // The clock the learner feels starts at his last word, not at the stop request:
-  // the silence window has already run by the time this fires, and the server's own
-  // stt_ms is anchored to a VAD that notices the pause even later.
-  const sinceLastWord = performance.now() - SILENCE_MS;
+  // The number on screen is the system's, not the learner's: the silence window is a
+  // deliberate pause, so the clock starts when it closes. (Anchoring at his last word
+  // made a fixed 750 ms look like transcription cost.)
+  const tTurnEnd = performance.now();
   try {
     const { text, stt_ms, blob } = await closeStream();
-    const heardMs = Math.round(performance.now() - sinceLastWord);
+    const heardMs = Math.round(performance.now() - tTurnEnd);
     if (started && !muted) openStream(); // the ear is never closed for long
 
     const step = turns.onUtterance(text);
